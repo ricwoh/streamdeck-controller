@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+build/
+*.AppImage
+.mcp.json
+AGENTS.md
+GEMINI.md
+CLAUDE.md
+.claude/
+.codex/
+.gemini/
+Anweisungen/
+Screenshot*

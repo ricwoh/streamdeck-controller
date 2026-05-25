@@ -1,0 +1,62 @@
+#!/bin/bash
+# Stream Deck CLI wrapper
+
+SCRIPT="$HOME/Programmieren/Projekte/streamdeck/streamdeck_controller.py"
+CONFIG="$HOME/.config/streamdeck/config.json"
+VENV="$HOME/.venv/streamdeck/bin/python3"
+
+case "$1" in
+  run)
+    echo "Stream Deck wird gestartet..."
+    source "$HOME/.venv/streamdeck/bin/activate"
+    exec python3 "$SCRIPT"
+    ;;
+  start)
+    echo "Stream Deck wird im Hintergrund gestartet..."
+    nohup "$VENV" "$SCRIPT" &> "$HOME/.streamdeck.log" &
+    echo "PID: $!"
+    ;;
+  stop)
+    PID=$(pgrep -f "streamdeck_controller.py")
+    if [ -n "$PID" ]; then
+      kill "$PID" && echo "Stream Deck gestoppt (PID $PID)."
+    else
+      echo "Stream Deck läuft nicht."
+    fi
+    ;;
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+  config)
+    xed "$CONFIG"
+    ;;
+  list-devices)
+    source "$HOME/.venv/streamdeck/bin/activate"
+    python3 "$SCRIPT" --list-devices
+    ;;
+  log)
+    tail -f "$HOME/.streamdeck.log"
+    ;;
+  status)
+    PID=$(pgrep -f "streamdeck_controller.py")
+    if [ -n "$PID" ]; then
+      echo "Läuft (PID $PID)"
+    else
+      echo "Gestoppt"
+    fi
+    ;;
+  *)
+    echo "Verwendung: streamdeck {run|start|stop|restart|config|list-devices|log|status}"
+    echo ""
+    echo "  run           Im Vordergrund starten (Terminal bleibt offen)"
+    echo "  start         Im Hintergrund starten"
+    echo "  stop          Beenden"
+    echo "  restart       Neu starten"
+    echo "  config        Config-Datei im Editor öffnen"
+    echo "  list-devices  Spotify-Geräte und Playlists auflisten"
+    echo "  log           Live-Log anzeigen"
+    echo "  status        Zeigt ob Stream Deck läuft"
+    ;;
+esac

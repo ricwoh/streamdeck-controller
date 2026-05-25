@@ -1,0 +1,43 @@
+#!/bin/bash
+# AppRun – Einstiegspunkt des AppImage
+HERE="$(dirname "$(readlink -f "$0")")"
+UDEV_RULE="/etc/udev/rules.d/50-elgato-streamdeck.rules"
+
+# libhidapi aus dem AppImage-Bundle einbinden
+export LD_LIBRARY_PATH="$HERE/usr/lib:${LD_LIBRARY_PATH}"
+
+# ── Einmalig: udev-Regel prüfen ───────────────────────────────────────────────
+if [ ! -f "$UDEV_RULE" ]; then
+    echo ""
+    echo "  Stream Deck: udev-Regel fehlt noch."
+    echo "  Einmalig als root ausführen:"
+    echo ""
+    echo "    sudo tee $UDEV_RULE > /dev/null << 'EOF'"
+    echo "    SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0fd9\", TAG+=\"uaccess\""
+    echo "    KERNEL==\"hidraw*\", ATTRS{idVendor}==\"0fd9\", TAG+=\"uaccess\""
+    echo "    EOF"
+    echo "    sudo udevadm control --reload-rules && sudo udevadm trigger"
+    echo ""
+
+    # Falls pkexec verfügbar – GUI-Dialog anbieten
+    if command -v pkexec &>/dev/null && command -v tee &>/dev/null; then
+        if command -v zenity &>/dev/null; then
+            zenity --question \
+                --title="Stream Deck – Einrichtung" \
+                --text="Die udev-Regel für den Stream Deck fehlt.\nDarf sie jetzt installiert werden?\n(benötigt Administrator-Passwort)" \
+                --ok-label="Ja, installieren" \
+                --cancel-label="Abbrechen" 2>/dev/null && \
+            pkexec bash -c "
+                tee $UDEV_RULE > /dev/null << 'EOF2'
+SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0fd9\", TAG+=\"uaccess\"
+KERNEL==\"hidraw*\", ATTRS{idVendor}==\"0fd9\", TAG+=\"uaccess\"
+EOF2
+                udevadm control --reload-rules
+                udevadm trigger
+            " && echo "  ✓ udev-Regel installiert."
+        fi
+    fi
+fi
+
+# ── Controller starten ────────────────────────────────────────────────────────
+exec "$HERE/usr/bin/streamdeck-controller" "$@"

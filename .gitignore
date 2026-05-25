@@ -1,7 +1,10 @@
+# Build-Artefakte
+build/
 __pycache__/
 *.pyc
-build/
 *.AppImage
+
+# AI-Tools (lokal)
 .mcp.json
 AGENTS.md
 GEMINI.md
@@ -9,5 +12,12 @@ CLAUDE.md
 .claude/
 .codex/
 .gemini/
+
+# Lokale Anweisungen
 Anweisungen/
+
+# AUR-Arbeitsordner (eigenes git-Repo)
+aur/aur-repo/
+
+# Screenshots / temporäre Bilder
 Screenshot*

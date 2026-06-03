@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stream Deck – GUI-Konfigurator und Controller"""
 
-import json, os, sys, time, subprocess, shutil, logging
+import argparse, json, os, sys, time, subprocess, shutil, logging
 from pathlib import Path
 from copy import deepcopy
 
@@ -21,9 +21,10 @@ from StreamDeck.ImageHelpers import PILHelper
 from StreamDeck.Transport.Transport import TransportError
 
 # ── Pfade ──────────────────────────────────────────────────────────────────────
+APP_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = Path.home() / ".config" / "streamdeck" / "config.json"
-ICONS_DIR   = Path(__file__).parent / "Icons"
-LOG_PATH    = Path.home() / ".streamdeck.log"
+ICONS_DIR = Path(os.environ.get("STREAMDECK_ICONS_DIR", APP_DIR / "icons")).expanduser()
+LOG_PATH = Path(os.environ.get("STREAMDECK_LOG_PATH", Path.home() / ".streamdeck.log")).expanduser()
 FONT_PATH   = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 INSTANCE_KEY = "streamdeck-app-v1"
 
@@ -831,9 +832,48 @@ class StreamDeckWindow(QMainWindow):
         self.hide()
 
 
-# ── Single-Instance & Einstiegspunkt ──────────────────────────────────────────
+# ── CLI & Einstiegspunkt ───────────────────────────────────────────────────────
+
+def list_devices() -> int:
+    try:
+        devices = DM.DeviceManager().enumerate()
+    except Exception as e:
+        print(f"Fehler beim Suchen: {e}", file=sys.stderr)
+        return 1
+
+    if not devices:
+        print("Keine Stream-Deck-Geräte gefunden.")
+        return 0
+
+    for idx, deck in enumerate(devices):
+        try:
+            deck.open()
+            print(f"{idx}: {deck.deck_type()} – {deck.key_count()} Tasten")
+        except Exception as e:
+            print(f"{idx}: Gerät gefunden, Details nicht lesbar: {e}")
+        finally:
+            try:
+                deck.close()
+            except Exception:
+                pass
+    return 0
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Stream Deck Controller")
+    parser.add_argument("--list-devices", action="store_true", help="angeschlossene Stream Decks anzeigen")
+    parser.add_argument("--version", action="store_true", help="Version anzeigen")
+    return parser.parse_args(argv)
+
 
 def main():
+    args = parse_args(sys.argv[1:])
+    if args.version:
+        print("streamdeck-controller 0.1.0")
+        return
+    if args.list_devices:
+        sys.exit(list_devices())
+
     app = QApplication(sys.argv)
     app.setApplicationName("Stream Deck")
     app.setQuitOnLastWindowClosed(False)

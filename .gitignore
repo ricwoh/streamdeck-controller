@@ -1,8 +1,17 @@
 # Build-Artefakte
 build/
+dist/
+pkg/
+src/
 __pycache__/
+.pytest_cache/
 *.pyc
 *.AppImage
+*.pkg.tar.*
+
+# Lokale Python-Umgebungen
+.venv/
+venv/
 
 # AI-Tools (lokal)
 .mcp.json

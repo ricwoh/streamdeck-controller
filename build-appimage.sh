@@ -56,11 +56,15 @@ fi
     --hidden-import PIL.Image \
     --hidden-import PIL.ImageDraw \
     --hidden-import PIL.ImageFont \
+    --hidden-import PySide6 \
+    --hidden-import PySide6.QtCore \
+    --hidden-import PySide6.QtGui \
+    --hidden-import PySide6.QtWidgets \
     --hidden-import StreamDeck \
     --hidden-import StreamDeck.DeviceManager \
     --hidden-import StreamDeck.Transport.LibUSBHIDAPI \
     --hidden-import StreamDeck.ImageHelpers \
-    streamdeck_controller.py
+    streamdeck_app.py
 
 echo "  ✓ Binary gebaut: $BUILD_DIR/dist/streamdeck-controller"
 

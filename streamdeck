@@ -1,62 +1,52 @@
-#!/bin/bash
-# Stream Deck CLI wrapper
+#!/usr/bin/env bash
+# Stream Deck CLI wrapper for source checkouts.
+set -euo pipefail
 
-SCRIPT="$HOME/Programmieren/Projekte/streamdeck/streamdeck_controller.py"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP="$SCRIPT_DIR/streamdeck_app.py"
 CONFIG="$HOME/.config/streamdeck/config.json"
-VENV="$HOME/.venv/streamdeck/bin/python3"
+VENV="${STREAMDECK_VENV:-$HOME/.venv/streamdeck}"
+PYTHON="${STREAMDECK_PYTHON:-$VENV/bin/python3}"
 
-case "$1" in
+run_app() {
+  if [[ -x "$PYTHON" ]]; then
+    exec "$PYTHON" "$APP" "$@"
+  fi
+  exec python3 "$APP" "$@"
+}
+
+case "${1:-run}" in
   run)
-    echo "Stream Deck wird gestartet..."
-    source "$HOME/.venv/streamdeck/bin/activate"
-    exec python3 "$SCRIPT"
+    shift || true
+    run_app "$@"
     ;;
   start)
-    echo "Stream Deck wird im Hintergrund gestartet..."
-    nohup "$VENV" "$SCRIPT" &> "$HOME/.streamdeck.log" &
+    mkdir -p "$(dirname "$HOME/.streamdeck.log")"
+    nohup "$PYTHON" "$APP" > "$HOME/.streamdeck.log" 2>&1 &
     echo "PID: $!"
     ;;
   stop)
-    PID=$(pgrep -f "streamdeck_controller.py")
-    if [ -n "$PID" ]; then
-      kill "$PID" && echo "Stream Deck gestoppt (PID $PID)."
-    else
-      echo "Stream Deck läuft nicht."
-    fi
+    pkill -f "$APP" && echo "Stream Deck gestoppt." || echo "Stream Deck läuft nicht."
     ;;
   restart)
-    "$0" stop
+    "$0" stop || true
     sleep 1
     "$0" start
     ;;
   config)
-    xed "$CONFIG"
+    "${EDITOR:-xdg-open}" "$CONFIG"
     ;;
   list-devices)
-    source "$HOME/.venv/streamdeck/bin/activate"
-    python3 "$SCRIPT" --list-devices
+    run_app --list-devices
     ;;
   log)
     tail -f "$HOME/.streamdeck.log"
     ;;
   status)
-    PID=$(pgrep -f "streamdeck_controller.py")
-    if [ -n "$PID" ]; then
-      echo "Läuft (PID $PID)"
-    else
-      echo "Gestoppt"
-    fi
+    pgrep -af "$APP" || echo "Gestoppt"
     ;;
   *)
     echo "Verwendung: streamdeck {run|start|stop|restart|config|list-devices|log|status}"
-    echo ""
-    echo "  run           Im Vordergrund starten (Terminal bleibt offen)"
-    echo "  start         Im Hintergrund starten"
-    echo "  stop          Beenden"
-    echo "  restart       Neu starten"
-    echo "  config        Config-Datei im Editor öffnen"
-    echo "  list-devices  Spotify-Geräte und Playlists auflisten"
-    echo "  log           Live-Log anzeigen"
-    echo "  status        Zeigt ob Stream Deck läuft"
+    exit 2
     ;;
 esac

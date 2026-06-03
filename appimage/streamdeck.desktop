@@ -1,8 +1,9 @@
 [Desktop Entry]
-Name=Stream Deck
-Comment=Elgato Stream Deck Controller
+Name=Stream Deck Controller
+Comment=Elgato Stream Deck konfigurieren und steuern
 Exec=streamdeck-controller
 Icon=streamdeck
 Terminal=false
 Type=Application
 Categories=Utility;HardwareSettings;
+StartupNotify=true

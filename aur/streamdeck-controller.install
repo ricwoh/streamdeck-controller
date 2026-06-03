@@ -1,13 +1,17 @@
 post_install() {
-    udevadm control --reload-rules
-    udevadm trigger
+    udevadm control --reload-rules 2>/dev/null || true
+    udevadm trigger 2>/dev/null || true
     echo ""
-    echo "  Stream Deck wurde installiert!"
-    echo "  Starten: Windows-Taste → 'Stream Deck' suchen"
+    echo "  Stream Deck Controller wurde installiert."
+    echo "  Start: streamdeck-controller oder App-Menü → Stream Deck Controller"
     echo "  Tipp: Stream Deck USB kurz trennen und wieder einstecken."
     echo ""
 }
 
 post_upgrade() {
     post_install
+}
+
+post_remove() {
+    udevadm control --reload-rules 2>/dev/null || true
 }

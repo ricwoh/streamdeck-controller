@@ -585,7 +585,7 @@ class StreamDeckWindow(QMainWindow):
         self._key_btns: list[KeyButton] = []
         self._cols, self._rows = 5, 3
 
-        self.setWindowTitle("Stream Deck")
+        self.setWindowTitle("Stream Deck – Clamon Test")
         self.setMinimumSize(720, 520)
         self._apply_dark_theme()
         self._build_ui()
@@ -875,7 +875,7 @@ def main():
         sys.exit(list_devices())
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Stream Deck")
+    app.setApplicationName("Stream Deck – Clamon Test")
     app.setQuitOnLastWindowClosed(False)
 
     # Einzelne Instanz sicherstellen

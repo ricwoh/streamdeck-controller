@@ -1,0 +1,65 @@
+name: Arch package
+
+on:
+  push:
+    branches: [main, "feature/**", "fix/**", "ci/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  arch-package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install CI tools
+        run: |
+          pacman -Syu --noconfirm --needed git sudo python python-pip python-pytest namcap pyside6 python-pillow hidapi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare non-root builder
+        run: |
+          useradd -m -u 1000 builder
+          printf 'builder ALL=(ALL) NOPASSWD: ALL\n' >/etc/sudoers.d/builder
+          chmod 440 /etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install AUR dependency
+        run: |
+          su builder -c 'git clone https://aur.archlinux.org/python-elgato-streamdeck.git /tmp/python-elgato-streamdeck'
+          su builder -c 'cd /tmp/python-elgato-streamdeck && makepkg -si --noconfirm --needed'
+
+      - name: Source and static checks
+        run: |
+          su builder -c "cd '$GITHUB_WORKSPACE' && python -m py_compile streamdeck_app.py"
+          su builder -c "cd '$GITHUB_WORKSPACE' && python -m pytest -q"
+          su builder -c "cd '$GITHUB_WORKSPACE' && python tools/static-packaging-check.py"
+
+      - name: Verify AUR metadata
+        run: |
+          su builder -c "cd '$GITHUB_WORKSPACE/aur/aur-repo' && makepkg --printsrcinfo > /tmp/generated.SRCINFO"
+          diff -u "$GITHUB_WORKSPACE/aur/aur-repo/.SRCINFO" /tmp/generated.SRCINFO
+
+      - name: Build package from checked-out commit
+        run: |
+          git clone --bare "$GITHUB_WORKSPACE" /tmp/source.git
+          cp -a "$GITHUB_WORKSPACE/aur/aur-repo" /tmp/aur-repo
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          pkg = Path('/tmp/aur-repo/PKGBUILD')
+          sha = os.environ['GITHUB_SHA']
+          s = pkg.read_text()
+          old = 'source=("streamdeck-controller::git+https://github.com/ricwoh/streamdeck-controller.git")'
+          new = f'source=("streamdeck-controller::git+file:///tmp/source.git#commit={sha}")'
+          if old not in s:
+              raise SystemExit('expected source line not found in PKGBUILD')
+          pkg.write_text(s.replace(old, new))
+          PY
+          chown -R builder:builder /tmp/aur-repo /tmp/source.git
+          su builder -c 'cd /tmp/aur-repo && makepkg -sf --noconfirm'
+          su builder -c 'cd /tmp/aur-repo && namcap PKGBUILD && namcap ./*.pkg.tar.*'

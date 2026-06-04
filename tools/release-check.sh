@@ -4,6 +4,26 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+ARCH_MODE="auto"
+case "${1:-}" in
+  --arch) ARCH_MODE="required" ;;
+  --no-arch) ARCH_MODE="skip" ;;
+  -h|--help)
+    cat <<'EOF'
+Usage: tools/release-check.sh [--arch|--no-arch]
+
+Default: run source/static checks and run Arch package check automatically
+when makepkg/Docker/Podman is available.
+
+--arch    require the real Arch package check, fail if no runtime exists
+--no-arch skip the real Arch package check
+EOF
+    exit 0
+    ;;
+  "") ;;
+  *) printf 'FEHLER: unbekannte Option: %s\n' "$1" >&2; exit 64 ;;
+esac
+
 ok() { printf 'OK: %s\n' "$*"; }
 fail() { printf 'FEHLER: %s\n' "$*" >&2; exit 1; }
 info() { printf 'INFO: %s\n' "$*"; }
@@ -56,12 +76,25 @@ ok "Tests grün"
 python3 tools/static-packaging-check.py
 ok "Statische Packaging-Checks grün"
 
-if command -v makepkg >/dev/null 2>&1; then
-  (cd aur/aur-repo && makepkg --printsrcinfo > /tmp/streamdeck-controller.SRCINFO)
-  diff -u aur/aur-repo/.SRCINFO /tmp/streamdeck-controller.SRCINFO
-  ok "makepkg --printsrcinfo stimmt mit .SRCINFO überein"
-else
-  info "makepkg nicht vorhanden: echter Arch/AUR-Build ist hier nicht verifiziert"
-fi
-
-printf '\nERGEBNIS: OK für Source/Static-Checks. Finaler yay/makepkg-Test muss auf Arch laufen.\n'
+case "$ARCH_MODE" in
+  skip)
+    info "Arch/AUR-Build übersprungen (--no-arch)"
+    printf '\nERGEBNIS: OK für Source/Static-Checks. Arch/AUR-Build wurde übersprungen.\n'
+    ;;
+  required)
+    ./tools/test-arch-package.sh --require-runtime
+    printf '\nERGEBNIS: OK inklusive echtem Arch/AUR-Paketbuild.\n'
+    ;;
+  auto)
+    if ./tools/test-arch-package.sh; then
+      printf '\nERGEBNIS: OK inklusive echtem Arch/AUR-Paketbuild.\n'
+    else
+      code="$?"
+      if [[ "$code" -eq 2 ]]; then
+        printf '\nERGEBNIS: OK für Source/Static-Checks. Finaler Arch/AUR-Build braucht makepkg, Docker oder Podman.\n'
+      else
+        exit "$code"
+      fi
+    fi
+    ;;
+esac

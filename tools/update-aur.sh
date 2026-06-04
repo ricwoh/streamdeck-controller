@@ -23,9 +23,10 @@ ok "Statische Packaging-Prüfung grün"
 
 if command -v makepkg >/dev/null 2>&1; then
   (cd aur/aur-repo && makepkg --printsrcinfo > .SRCINFO)
-  ok ".SRCINFO mit makepkg neu erzeugt"
+  cp aur/aur-repo/.SRCINFO aur/.SRCINFO
+  ok ".SRCINFO mit makepkg neu erzeugt und Template aktualisiert"
 else
-  info "makepkg nicht vorhanden: .SRCINFO bleibt unverändert. Regenerieren auf Arch mit: cd aur/aur-repo && makepkg --printsrcinfo > .SRCINFO"
+  info "makepkg nicht vorhanden: .SRCINFO bleibt unverändert. Regenerieren auf Arch mit: cd aur/aur-repo && makepkg --printsrcinfo > .SRCINFO && cp .SRCINFO ../.SRCINFO"
 fi
 
 rm -rf aur/aur-repo/pkg aur/aur-repo/src aur/aur-repo/streamdeck-controller aur/aur-repo/*.pkg.tar.*

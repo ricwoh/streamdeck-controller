@@ -37,7 +37,7 @@ def test_desktop_files_have_stable_exec():
 
 
 def test_srcinfo_matches_pkgbuild_core_dependencies():
-    srcinfo = (ROOT / "aur" / "aur-repo" / ".SRCINFO").read_text()
+    srcinfo = (ROOT / "aur" / ".SRCINFO").read_text()
     for dep in ["python", "hidapi", "pyside6", "python-pillow", "python-elgato-streamdeck"]:
         assert f"depends = {dep}" in srcinfo
     assert "python-pyside6" not in srcinfo

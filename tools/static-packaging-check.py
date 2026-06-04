@@ -52,16 +52,16 @@ def check_pkgbuild(path: str) -> None:
             fail(f"{path}: erwartete Install-Referenz fehlt: {needle}")
 
 
-def check_srcinfo() -> None:
-    text = read("aur/aur-repo/.SRCINFO")
+def check_srcinfo(path: str) -> None:
+    text = read(path)
     for dep in EXPECTED_DEPS:
         if f"depends = {dep}" not in text:
-            fail(f".SRCINFO: Dependency fehlt: {dep}")
+            fail(f"{path}: Dependency fehlt: {dep}")
     for bad in ["python-pyside6", "python-streamdeck"]:
         if bad in text:
-            fail(f".SRCINFO: stale Dependency gefunden: {bad}")
+            fail(f"{path}: stale Dependency gefunden: {bad}")
     if f"source = {SOURCE}" not in text:
-        fail(".SRCINFO: source fehlt/falsch")
+        fail(f"{path}: source fehlt/falsch")
 
 
 def check_desktop() -> None:
@@ -85,8 +85,11 @@ def main() -> None:
     check_python_syntax()
     check_local_install()
     check_pkgbuild("aur/PKGBUILD")
-    check_pkgbuild("aur/aur-repo/PKGBUILD")
-    check_srcinfo()
+    check_srcinfo("aur/.SRCINFO")
+    if (ROOT / "aur" / "aur-repo" / "PKGBUILD").exists():
+        check_pkgbuild("aur/aur-repo/PKGBUILD")
+    if (ROOT / "aur" / "aur-repo" / ".SRCINFO").exists():
+        check_srcinfo("aur/aur-repo/.SRCINFO")
     check_desktop()
     print("OK: static packaging check")
 

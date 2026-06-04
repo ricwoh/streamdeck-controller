@@ -2,7 +2,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AUR_DIR="$ROOT/aur/aur-repo"
+if [[ -f "$ROOT/aur/aur-repo/PKGBUILD" ]]; then
+  AUR_DIR="$ROOT/aur/aur-repo"
+else
+  AUR_DIR="$ROOT/aur"
+fi
 PKGBUILD="$AUR_DIR/PKGBUILD"
 SRCINFO="$AUR_DIR/.SRCINFO"
 

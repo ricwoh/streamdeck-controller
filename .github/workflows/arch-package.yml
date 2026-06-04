@@ -41,13 +41,22 @@ jobs:
 
       - name: Verify AUR metadata
         run: |
-          su builder -c "cd '$GITHUB_WORKSPACE/aur/aur-repo' && makepkg --printsrcinfo > /tmp/generated.SRCINFO"
-          diff -u "$GITHUB_WORKSPACE/aur/aur-repo/.SRCINFO" /tmp/generated.SRCINFO
+          mkdir -p /tmp/aur-repo
+          cp "$GITHUB_WORKSPACE/aur/PKGBUILD" /tmp/aur-repo/PKGBUILD
+          cp "$GITHUB_WORKSPACE/aur/.SRCINFO" /tmp/aur-repo/.SRCINFO
+          cp "$GITHUB_WORKSPACE/aur/streamdeck-controller.install" /tmp/aur-repo/streamdeck-controller.install
+          chown -R builder:builder /tmp/aur-repo
+          su builder -c "cd /tmp/aur-repo && makepkg --printsrcinfo > /tmp/generated.SRCINFO"
+          diff -u "$GITHUB_WORKSPACE/aur/.SRCINFO" /tmp/generated.SRCINFO
 
       - name: Build package from checked-out commit
         run: |
           git clone --bare "$GITHUB_WORKSPACE" /tmp/source.git
-          cp -a "$GITHUB_WORKSPACE/aur/aur-repo" /tmp/aur-repo
+          rm -rf /tmp/aur-repo
+          mkdir -p /tmp/aur-repo
+          cp "$GITHUB_WORKSPACE/aur/PKGBUILD" /tmp/aur-repo/PKGBUILD
+          cp "$GITHUB_WORKSPACE/aur/.SRCINFO" /tmp/aur-repo/.SRCINFO
+          cp "$GITHUB_WORKSPACE/aur/streamdeck-controller.install" /tmp/aur-repo/streamdeck-controller.install
           python - <<'PY'
           from pathlib import Path
           import os

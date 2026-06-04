@@ -583,7 +583,7 @@ class StreamDeckWindow(QMainWindow):
         self._page_idx = 0
         self._selected = None
         self._key_btns: list[KeyButton] = []
-        self._cols, self._rows = 5, 3
+        self._cols, self._rows = 3, 2
 
         self.setWindowTitle("Stream Deck – Clamon Test")
         self.setMinimumSize(720, 520)

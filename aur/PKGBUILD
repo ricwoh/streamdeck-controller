@@ -1,12 +1,12 @@
 # Maintainer: Rico <ricwoh@pm.me>
 pkgname=streamdeck-controller
-pkgver=r2.262702e
-pkgrel=2
+pkgver=r5.00d27e7
+pkgrel=1
 pkgdesc="Elgato Stream Deck GUI-Konfigurator und Controller"
 arch=('x86_64')
 url="https://github.com/ricwoh/streamdeck-controller"
 license=('MIT')
-depends=('python' 'hidapi' 'python-pyside6' 'python-pillow' 'python-streamdeck')
+depends=('python' 'hidapi' 'pyside6' 'python-pillow' 'python-elgato-streamdeck')
 makedepends=('git')
 install="$pkgname.install"
 source=("streamdeck-controller::git+https://github.com/ricwoh/streamdeck-controller.git")

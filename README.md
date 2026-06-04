@@ -36,12 +36,28 @@ streamdeck-controller
 
 Der Installer legt einen venv unter `~/.venv/streamdeck`, einen Starter unter `~/.local/bin/streamdeck-controller` und einen Desktop-Eintrag an.
 
+## Operator-Workflow
+
+Statt viele Befehle einzeln zu kopieren, gibt es repo-lokale Checks:
+
+```bash
+./tools/release-check.sh
+```
+
+Prüft Git-Status, Secrets/Artefakte, Python-Syntax, Tests und statisches AUR-Packaging.
+
+```bash
+./tools/update-aur.sh
+```
+
+Synchronisiert die AUR-Arbeitskopie unter `aur/aur-repo` aus der Vorlage und räumt Build-Artefakte weg.
+
 ## Arch Linux / AUR
 
 Im Repo liegt die statische AUR-Vorlage unter `aur/`. Finale Arch-Prüfung muss auf Arch laufen:
 
 ```bash
-cd aur
+cd aur/aur-repo
 makepkg --printsrcinfo > .SRCINFO
 makepkg -sf
 namcap PKGBUILD

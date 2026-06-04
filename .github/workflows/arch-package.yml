@@ -51,7 +51,7 @@ jobs:
 
       - name: Build package from checked-out commit
         run: |
-          git clone --bare "$GITHUB_WORKSPACE" /tmp/source.git
+          su builder -c "git clone --bare '$GITHUB_WORKSPACE' /tmp/source.git"
           rm -rf /tmp/aur-repo
           mkdir -p /tmp/aur-repo
           cp "$GITHUB_WORKSPACE/aur/PKGBUILD" /tmp/aur-repo/PKGBUILD

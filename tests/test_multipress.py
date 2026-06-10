@@ -91,6 +91,14 @@ def test_all_three_triggers():
     assert fired == ["single", "double", "hold"]
 
 
+def test_reset_cancels_pending_timers():
+    router, fired = make_router({"single": True, "double": True})
+    click(router)             # wartet auf Doppelklick-Fenster …
+    router.reset()            # … Seitenwechsel/Reload bricht Timer ab
+    wait()
+    assert fired == []        # kein verspätetes "single" nach dem Reset
+
+
 def test_keys_are_independent():
     fired = []
     router = MultiPressRouter(

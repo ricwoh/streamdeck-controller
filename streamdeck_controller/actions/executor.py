@@ -35,7 +35,13 @@ def copy_clipboard(text: str):
     else:
         notify("Zwischenablage", "wl-clipboard oder xclip installieren", "dialog-error")
         return
-    p.communicate(text.encode(), timeout=3)
+    try:
+        # xclip/wl-copy bleiben als Clipboard-Besitzer im Hintergrund —
+        # nur stdin schreiben, nicht auf Prozessende warten
+        p.stdin.write(text.encode())
+        p.stdin.close()
+    except OSError:
+        pass
 
 
 def _volume_cmd(direction: str) -> str:

@@ -183,6 +183,9 @@ class DeckDaemon:
             timing = self.cfg.get("timing", {})
             self.router.set_timing(timing.get("double_window_ms", 300),
                                    timing.get("hold_ms", 500))
+            # Veraltete Zustände verwerfen (Belegung/Spotify können sich geändert haben)
+            self._toggle.clear()
+            self._now_playing = None
             self._config_mtime = self._mtime()
             if self.deck:
                 try:

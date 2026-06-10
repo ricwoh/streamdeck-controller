@@ -34,6 +34,19 @@ class KeyPressTracker:
         self._hold_timer: threading.Timer | None = None
         self._single_timer: threading.Timer | None = None
 
+    def cancel(self):
+        """Alle laufenden Timer abbrechen (z.B. bei Seitenwechsel/Reload)."""
+        with self._lock:
+            if self._hold_timer:
+                self._hold_timer.cancel()
+                self._hold_timer = None
+            if self._single_timer:
+                self._single_timer.cancel()
+                self._single_timer = None
+            self._pressed = False
+            self._hold_fired = False
+            self._click_count = 0
+
     def press(self):
         with self._lock:
             self._pressed = True
@@ -118,9 +131,11 @@ class MultiPressRouter:
     def set_timing(self, double_window_ms: int, hold_ms: int):
         self._double_window = double_window_ms / 1000.0
         self._hold_time = hold_ms / 1000.0
-        self._trackers.clear()
+        self.reset()
 
     def reset(self):
+        for tracker in self._trackers.values():
+            tracker.cancel()
         self._trackers.clear()
 
     def _tracker(self, key: int) -> KeyPressTracker:

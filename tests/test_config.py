@@ -65,7 +65,8 @@ def test_v1_migration(tmp_config):
     assert keys["0"]["icon_active"] == "~/icons/play_a.png"
     assert keys["1"]["actions"]["single"] == {"id": "app_launch", "params": {"cmd": "firefox"}}
     assert keys["2"]["actions"]["single"]["id"] == "page_goto"
-    assert keys["2"]["actions"]["single"]["params"]["page"] == 1
+    # v1-target war 0-basiert (1 = zweite Seite) → v2 ist 1-basiert (2 = zweite Seite)
+    assert keys["2"]["actions"]["single"]["params"]["page"] == 2
 
     # Backup der alten Datei wurde angelegt, Migration persistiert
     assert tmp_config.with_suffix(".json.v1-backup").exists()

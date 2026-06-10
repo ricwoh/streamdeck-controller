@@ -72,7 +72,8 @@ def _migrate_v1(old: dict) -> dict:
                 fn_id = _V1_FN_MAP.get(action.get("_fn_id", ""), "custom_cmd")
                 params = {}
                 if fn_id == "page_goto":
-                    params["page"] = action.get("target", 0)
+                    # v1 war 0-basiert, v2 ist 1-basiert
+                    params["page"] = int(action.get("target", 0)) + 1
                 elif action.get("_fn_id") == "spotify_open":
                     params["cmd"] = "spotify"
                 elif "cmd" in action and action["cmd"]:

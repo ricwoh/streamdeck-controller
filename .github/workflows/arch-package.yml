@@ -35,7 +35,7 @@ jobs:
 
       - name: Source and static checks
         run: |
-          su builder -c "cd '$GITHUB_WORKSPACE' && python -m py_compile streamdeck_app.py"
+          su builder -c "cd '$GITHUB_WORKSPACE' && python -m compileall -q streamdeck_controller"
           su builder -c "cd '$GITHUB_WORKSPACE' && python -m pytest -q"
           su builder -c "cd '$GITHUB_WORKSPACE' && python tools/static-packaging-check.py"
 

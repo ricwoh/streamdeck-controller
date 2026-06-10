@@ -1,0 +1,3 @@
+# Elgato Stream Deck — Zugriff ohne root für angemeldete Benutzer
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"

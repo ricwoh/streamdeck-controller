@@ -2,11 +2,11 @@
 pkgname=streamdeck-controller
 pkgver=r5.00d27e7
 pkgrel=1
-pkgdesc="Elgato Stream Deck GUI-Konfigurator und Controller"
+pkgdesc="Elgato Stream Deck GUI-Konfigurator und Controller (Daemon, Spotify Web-API, Multi-Press)"
 arch=('x86_64')
 url="https://github.com/ricwoh/streamdeck-controller"
 license=('MIT')
-depends=('python' 'hidapi' 'pyside6' 'python-pillow' 'python-elgato-streamdeck')
+depends=('python' 'hidapi' 'pyside6' 'python-pillow' 'python-elgato-streamdeck' 'python-requests')
 makedepends=('git')
 install="$pkgname.install"
 source=("streamdeck-controller::git+https://github.com/ricwoh/streamdeck-controller.git")
@@ -21,33 +21,26 @@ package() {
     cd "$srcdir/$pkgname"
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-    install -Dm644 streamdeck_app.py "$pkgdir/usr/share/$pkgname/streamdeck_app.py"
 
-    if [[ -d icons ]]; then
-        install -dm755 "$pkgdir/usr/share/$pkgname/icons"
-        cp -r icons/. "$pkgdir/usr/share/$pkgname/icons/"
-    fi
+    local sitedir
+    sitedir="$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')"
+    install -dm755 "$pkgdir$sitedir"
+    cp -r streamdeck_controller "$pkgdir$sitedir/streamdeck_controller"
+    find "$pkgdir$sitedir" -type d -name __pycache__ -prune -exec rm -rf {} +
 
-    install -Dm755 /dev/stdin "$pkgdir/usr/bin/streamdeck-controller" <<'EOF'
+    install -dm755 "$pkgdir/usr/share/$pkgname/icons"
+    cp -r icons/. "$pkgdir/usr/share/$pkgname/icons/"
+
+    install -Dm755 /dev/stdin "$pkgdir/usr/bin/streamdeck" <<'EOF'
 #!/usr/bin/env bash
 export STREAMDECK_ICONS_DIR=/usr/share/streamdeck-controller/icons
-exec python3 /usr/share/streamdeck-controller/streamdeck_app.py "$@"
+exec python3 -m streamdeck_controller "$@"
 EOF
+    ln -s streamdeck "$pkgdir/usr/bin/streamdeck-controller"
 
-    install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/streamdeck-controller.desktop" <<'EOF'
-[Desktop Entry]
-Name=Stream Deck Controller
-Comment=Elgato Stream Deck konfigurieren und steuern
-Exec=streamdeck-controller
-Icon=input-gaming
-Terminal=false
-Type=Application
-Categories=Utility;HardwareSettings;
-StartupNotify=true
-EOF
+    install -Dm644 data/streamdeck-controller.desktop \
+        "$pkgdir/usr/share/applications/streamdeck-controller.desktop"
 
-    install -Dm644 /dev/stdin "$pkgdir/usr/lib/udev/rules.d/50-elgato-streamdeck.rules" <<'EOF'
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
-KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", TAG+="uaccess"
-EOF
+    install -Dm644 data/50-elgato-streamdeck.rules \
+        "$pkgdir/usr/lib/udev/rules.d/50-elgato-streamdeck.rules"
 }

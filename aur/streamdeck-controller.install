@@ -3,7 +3,8 @@ post_install() {
     udevadm trigger 2>/dev/null || true
     echo ""
     echo "  Stream Deck Controller wurde installiert."
-    echo "  Start: streamdeck-controller oder App-Menü → Stream Deck Controller"
+    echo "  GUI: streamdeck ui oder App-Menü → Stream Deck Controller"
+    echo "  Autostart aktivieren: streamdeck autostart on"
     echo "  Tipp: Stream Deck USB kurz trennen und wieder einstecken."
     echo ""
 }

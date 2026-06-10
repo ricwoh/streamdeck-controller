@@ -63,7 +63,7 @@ secret_hits="$(git grep -nE '(OPENAI_API_KEY|VOICE_TOOLS_OPENAI_KEY|TELEGRAM_BOT
 [ -z "$secret_hits" ] || fail "Mögliche Secrets im Repo:\n$secret_hits"
 ok "Secret-Scan sauber"
 
-python3 -m py_compile streamdeck_app.py
+python3 -m compileall -q streamdeck_controller
 ok "Python Syntax ok"
 
 if [ -f requirements.txt ]; then

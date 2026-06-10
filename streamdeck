@@ -1,52 +1,22 @@
 #!/usr/bin/env bash
-# Stream Deck CLI wrapper for source checkouts.
+# Stream Deck CLI — dünner Wrapper um das Python-Paket.
+# Ohne Argumente wird die Hilfe mit allen Befehlen angezeigt.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP="$SCRIPT_DIR/streamdeck_app.py"
-CONFIG="$HOME/.config/streamdeck/config.json"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 VENV="${STREAMDECK_VENV:-$HOME/.venv/streamdeck}"
-PYTHON="${STREAMDECK_PYTHON:-$VENV/bin/python3}"
 
-run_app() {
-  if [[ -x "$PYTHON" ]]; then
-    exec "$PYTHON" "$APP" "$@"
-  fi
-  exec python3 "$APP" "$@"
-}
+if [[ -x "$VENV/bin/python3" ]]; then
+  PYTHON="$VENV/bin/python3"
+elif [[ -x "$SCRIPT_DIR/.venv/bin/python3" ]]; then
+  PYTHON="$SCRIPT_DIR/.venv/bin/python3"
+else
+  PYTHON="$(command -v python3)"
+fi
 
-case "${1:-run}" in
-  run)
-    shift || true
-    run_app "$@"
-    ;;
-  start)
-    mkdir -p "$(dirname "$HOME/.streamdeck.log")"
-    nohup "$PYTHON" "$APP" > "$HOME/.streamdeck.log" 2>&1 &
-    echo "PID: $!"
-    ;;
-  stop)
-    pkill -f "$APP" && echo "Stream Deck gestoppt." || echo "Stream Deck läuft nicht."
-    ;;
-  restart)
-    "$0" stop || true
-    sleep 1
-    "$0" start
-    ;;
-  config)
-    "${EDITOR:-xdg-open}" "$CONFIG"
-    ;;
-  list-devices)
-    run_app --list-devices
-    ;;
-  log)
-    tail -f "$HOME/.streamdeck.log"
-    ;;
-  status)
-    pgrep -af "$APP" || echo "Gestoppt"
-    ;;
-  *)
-    echo "Verwendung: streamdeck {run|start|stop|restart|config|list-devices|log|status}"
-    exit 2
-    ;;
-esac
+# Im Source-Checkout liegt das Paket neben diesem Skript
+if [[ -d "$SCRIPT_DIR/streamdeck_controller" ]]; then
+  export PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
+exec "$PYTHON" -m streamdeck_controller "$@"

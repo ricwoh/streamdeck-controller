@@ -31,7 +31,7 @@ class DeckDaemon:
         self.page = 0
         self.deck = None
         self.deck_meta: dict = {}
-        self._running = True
+        self._stop = threading.Event()
         self._toggle: dict[tuple[int, int], bool] = {}
         self._cover_cache: dict[str, bytes] = {}
         self._now_playing: dict | None = None
@@ -217,7 +217,7 @@ class DeckDaemon:
             self.goto_page(int(request.get("page", 0)))
             return {"ok": True, "page": self.page}
         if cmd == "stop":
-            self._running = False
+            self._stop.set()
             return {"ok": True}
         return {"ok": False, "error": f"Unbekannter Befehl: {cmd}"}
 
@@ -230,11 +230,11 @@ class DeckDaemon:
 
         last_poll = 0.0
         try:
-            while self._running:
+            while not self._stop.is_set():
                 if self.deck is None:
                     self._try_connect()
                     if self.deck is None:
-                        time.sleep(RECONNECT_INTERVAL)
+                        self._stop.wait(RECONNECT_INTERVAL)
                         continue
 
                 if not self.deck.connected():
@@ -253,7 +253,7 @@ class DeckDaemon:
                     except Exception as e:
                         log.debug("Now-Playing-Poll: %s", e)
 
-                time.sleep(0.25)
+                self._stop.wait(0.25)
         finally:
             self._close_deck()
             self.ipc.stop()
@@ -294,7 +294,7 @@ class DeckDaemon:
             self.deck = None
 
     def stop(self):
-        self._running = False
+        self._stop.set()
 
 
 def run_daemon():

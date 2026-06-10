@@ -1,4 +1,5 @@
-"""Hauptfenster: Geräteauswahl, Seiten, Tasten-Grid, Funktions-Palette, Tasten-Panel."""
+"""Hauptfenster: Tasten-Grid + Konfiguration links, Auto-Hide-Funktionspalette rechts,
+Einstellungen als eigene Seite (Zahnrad / Zurück)."""
 
 import subprocess
 import sys
@@ -6,7 +7,7 @@ import sys
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QComboBox, QHBoxLayout, QInputDialog, QLabel, QMainWindow, QMessageBox,
-    QPushButton, QCheckBox, QScrollArea, QSlider, QTabBar, QVBoxLayout, QWidget,
+    QPushButton, QSlider, QStackedWidget, QTabBar, QVBoxLayout, QWidget,
 )
 
 from .. import __version__, autostart
@@ -16,10 +17,61 @@ from ..deck.manager import enumerate_decks
 from ..ipc import ipc_request
 from . import style
 from .key_panel import KeyConfigPanel
-from .spotify_dialog import SpotifyDialog
+from .settings_page import SettingsPage
 from .widgets import ActionPalette, KeyGrid
 
 DEFAULT_COLS, DEFAULT_ROWS = 3, 2  # Stream Deck Mini
+RESCAN = "__rescan__"
+PALETTE_WIDTH = 280
+WIDE_THRESHOLD = 1100  # ab dieser Breite sitzt ⟳ direkt neben der Geräteauswahl
+
+_SMALL = "padding:2px;font-weight:bold;"
+
+
+class _HoverStrip(QWidget):
+    """Schmaler Streifen am rechten Rand — beim Hovern erscheint die Palette."""
+
+    def __init__(self, on_enter, parent=None):
+        super().__init__(parent)
+        self._on_enter = on_enter
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFixedWidth(18)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("Funktionen einblenden")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        arrow = QLabel("◂")
+        arrow.setAlignment(Qt.AlignCenter)
+        arrow.setStyleSheet(f"color:{style.SUBTEXT};font-size:14px;")
+        layout.addWidget(arrow)
+        self.setStyleSheet(
+            f"_HoverStrip{{background:{style.CARD};border-radius:8px;}}")
+
+    def enterEvent(self, event):
+        self._on_enter()
+
+    def mousePressEvent(self, event):
+        self._on_enter()
+
+
+class _PaletteOverlay(QWidget):
+    """Schwebende Funktionspalette; verschwindet, wenn der Cursor sie verlässt."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFixedWidth(PALETTE_WIDTH)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        self.palette = ActionPalette()
+        layout.addWidget(self.palette)
+        self.setStyleSheet(
+            f"_PaletteOverlay{{background:{style.BG};"
+            f"border:1px solid {style.SURFACE_HI};border-radius:12px;}}")
+        self.hide()
+
+    def leaveEvent(self, event):
+        self.hide()
 
 
 class MainWindow(QMainWindow):
@@ -29,11 +81,10 @@ class MainWindow(QMainWindow):
         self.page_idx = 0
         self.selected_key: int | None = None
         self._daemon_was_connected = None
-
         self._syncing_page = False
 
         self.setWindowTitle(f"Stream Deck Controller {__version__}")
-        self.setMinimumSize(820, 640)
+        self.setMinimumSize(660, 700)
         self._build_ui()
         self._refresh_all()
 
@@ -44,74 +95,75 @@ class MainWindow(QMainWindow):
 
     # ── Aufbau ────────────────────────────────────────────────────────
     def _build_ui(self):
-        central = QWidget()
-        self.setCentralWidget(central)
-        root = QVBoxLayout(central)
-        root.setContentsMargins(14, 10, 14, 14)
-        root.setSpacing(10)
+        self._stack = QStackedWidget()
+        self.setCentralWidget(self._stack)
 
-        # Kopfzeile
+        # Seite 0: Hauptansicht
+        self._main_page = QWidget()
+        self._stack.addWidget(self._main_page)
+        outer = QHBoxLayout(self._main_page)
+        outer.setContentsMargins(14, 10, 6, 14)
+        outer.setSpacing(8)
+
+        left = QVBoxLayout()
+        left.setSpacing(10)
+
+        # ── Kopfzeile ────────────────────────────────────────────────
         top = QHBoxLayout()
-        self._status_lbl = QLabel("…")
-        self._status_lbl.setStyleSheet(f"color:{style.SUBTEXT};font-size:12px;")
-        top.addWidget(self._status_lbl)
+        top.setSpacing(8)
+
+        self._status_dot = QLabel()
+        self._status_dot.setFixedSize(14, 14)
+        self._set_dot(style.RED, "Daemon läuft nicht")
+        top.addWidget(self._status_dot)
+
         self._start_btn = QPushButton("Daemon starten")
         self._start_btn.clicked.connect(self._start_daemon)
         self._start_btn.hide()
         top.addWidget(self._start_btn)
         top.addStretch()
 
-        top.addWidget(QLabel("Gerät:"))
+        top.addWidget(QLabel("Gerät"))
         self._device_combo = QComboBox()
-        self._device_combo.setMinimumWidth(220)
+        self._device_combo.setMinimumWidth(170)
         self._device_combo.activated.connect(self._on_device_selected)
         top.addWidget(self._device_combo)
-        refresh_btn = QPushButton("⟳")
-        refresh_btn.setFixedWidth(30)
-        refresh_btn.setStyleSheet("padding:2px;font-weight:bold;")
-        refresh_btn.setToolTip("Geräte neu suchen")
-        refresh_btn.clicked.connect(self._refresh_devices)
-        top.addWidget(refresh_btn)
 
-        spotify_btn = QPushButton("Spotify…")
-        spotify_btn.clicked.connect(self._open_spotify)
-        top.addWidget(spotify_btn)
+        self._refresh_btn = QPushButton("⟳")
+        self._refresh_btn.setFixedWidth(30)
+        self._refresh_btn.setStyleSheet(_SMALL)
+        self._refresh_btn.setToolTip("Geräte neu suchen")
+        self._refresh_btn.clicked.connect(self._refresh_devices)
+        self._refresh_btn.hide()  # erscheint nur bei breitem Fenster
+        top.addWidget(self._refresh_btn)
 
-        self._autostart_chk = QCheckBox("Autostart")
-        self._autostart_chk.setToolTip("Daemon beim Anmelden automatisch starten (systemd)")
-        self._autostart_chk.setChecked(autostart.is_installed() and autostart.is_enabled())
-        self._autostart_chk.toggled.connect(self._on_autostart)
-        top.addWidget(self._autostart_chk)
-        root.addLayout(top)
+        settings_btn = QPushButton("⚙")
+        settings_btn.setFixedSize(30, 30)
+        settings_btn.setStyleSheet("padding:0;font-size:16px;")
+        settings_btn.setToolTip("Einstellungen")
+        settings_btn.clicked.connect(self._open_settings)
+        top.addWidget(settings_btn)
+        left.addLayout(top)
 
-        # Hauptbereich: links Grid + Tasten-Konfiguration, rechts Palette
-        main = QHBoxLayout()
-        main.setSpacing(14)
-
-        left = QVBoxLayout()
-        left.setSpacing(10)
-
+        # ── Seiten ───────────────────────────────────────────────────
         page_row = QHBoxLayout()
         self._page_bar = QTabBar()
         self._page_bar.setMovable(False)
         self._page_bar.currentChanged.connect(self._on_page_changed)
         self._page_bar.tabBarDoubleClicked.connect(self._rename_page)
         page_row.addWidget(self._page_bar)
-        add_page = QPushButton("+")
-        add_page.setFixedWidth(28)
-        add_page.setStyleSheet("padding:2px;font-weight:bold;")
-        add_page.setToolTip("Seite hinzufügen")
-        add_page.clicked.connect(self._add_page)
-        page_row.addWidget(add_page)
-        del_page = QPushButton("−")
-        del_page.setFixedWidth(28)
-        del_page.setStyleSheet("padding:2px;font-weight:bold;")
-        del_page.setToolTip("Seite löschen")
-        del_page.clicked.connect(self._del_page)
-        page_row.addWidget(del_page)
+        for text, tip, handler in (("+", "Seite hinzufügen", self._add_page),
+                                   ("−", "Seite löschen", self._del_page)):
+            btn = QPushButton(text)
+            btn.setFixedWidth(28)
+            btn.setStyleSheet(_SMALL)
+            btn.setToolTip(tip)
+            btn.clicked.connect(handler)
+            page_row.addWidget(btn)
         page_row.addStretch()
         left.addLayout(page_row)
 
+        # ── Grid ─────────────────────────────────────────────────────
         self.grid = KeyGrid()
         self.grid.rebuild(DEFAULT_COLS, DEFAULT_ROWS)
         self.grid.action_dropped.connect(self._on_action_dropped)
@@ -138,31 +190,65 @@ class MainWindow(QMainWindow):
         bright_row.addStretch()
         left.addLayout(bright_row)
 
-        # Tasten-Konfiguration unter dem Grid (2-Spalten-Layout)
+        # ── Tasten-Konfiguration (ohne Scrollen erreichbar) ──────────
         self.panel = KeyConfigPanel(
             pages_provider=lambda: [p.get("name", "Seite")
                                     for p in self.cfg.get("pages", [])])
         self.panel.changed.connect(self._on_panel_changed)
-        panel_scroll = QScrollArea()
-        panel_scroll.setWidgetResizable(True)
-        panel_scroll.setWidget(self.panel)
-        left.addWidget(panel_scroll, stretch=1)
-        main.addLayout(left, stretch=5)
+        left.addWidget(self.panel, stretch=1)
 
-        self.palette = ActionPalette()
-        self.palette.setMinimumWidth(250)
-        self.palette.setMaximumWidth(330)
-        main.addWidget(self.palette, stretch=2)
+        outer.addLayout(left, stretch=1)
 
-        root.addLayout(main)
+        # ── Auto-Hide-Palette am rechten Rand ────────────────────────
+        self._strip = _HoverStrip(self._show_palette)
+        outer.addWidget(self._strip)
+        self._palette_overlay = _PaletteOverlay(self._main_page)
+
+        # Seite 1: Einstellungen
+        self._settings = SettingsPage()
+        self._settings.back_requested.connect(self._close_settings)
+        self._stack.addWidget(self._settings)
+
         self._refresh_devices()
 
-    # ── Statusabfrage beim Daemon ─────────────────────────────────────
+    # ── Palette ───────────────────────────────────────────────────────
+    def _show_palette(self):
+        self._place_palette()
+        self._palette_overlay.show()
+        self._palette_overlay.raise_()
+
+    def _place_palette(self):
+        host = self._main_page
+        self._palette_overlay.setGeometry(
+            host.width() - PALETTE_WIDTH - 4, 6,
+            PALETTE_WIDTH, host.height() - 12)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._palette_overlay.isVisible():
+            self._place_palette()
+        self._refresh_btn.setVisible(self.width() >= WIDE_THRESHOLD)
+
+    # ── Einstellungen ─────────────────────────────────────────────────
+    def _open_settings(self):
+        self._settings.reload()
+        self._stack.setCurrentIndex(1)
+
+    def _close_settings(self):
+        self.cfg = load_config()
+        self._stack.setCurrentIndex(0)
+        self._refresh_all()
+
+    # ── Status / Sync ─────────────────────────────────────────────────
+    def _set_dot(self, color: str, tooltip: str):
+        self._status_dot.setStyleSheet(
+            f"background:{color};border-radius:7px;")
+        self._status_dot.setToolTip(tooltip)
+
     def _poll_status(self):
         status = ipc_request({"cmd": "status"}, timeout=1.0)
         if not status:
-            self._status_lbl.setText("● Daemon läuft nicht")
-            self._status_lbl.setStyleSheet(f"color:{style.RED};font-size:12px;")
+            self._set_dot(style.RED, "Daemon läuft nicht")
             self._start_btn.show()
             self._daemon_was_connected = None
             return
@@ -173,16 +259,14 @@ class MainWindow(QMainWindow):
             if (cols, rows) != (self.grid.cols, self.grid.rows):
                 self.grid.rebuild(cols, rows)
                 self._refresh_grid()
-            text = f"● Verbunden: {device.get('type', '?')} ({device.get('keys', '?')} Tasten)"
-            self._status_lbl.setText(text)
-            self._status_lbl.setStyleSheet(f"color:{style.GREEN};font-size:12px;")
+            self._set_dot(style.GREEN,
+                          f"Verbunden: {device.get('type', '?')} ({device.get('keys', '?')} Tasten)")
         else:
-            self._status_lbl.setText("● Daemon läuft — kein Deck gefunden (USB prüfen)")
-            self._status_lbl.setStyleSheet(f"color:#f9e2af;font-size:12px;")
+            self._set_dot(style.YELLOW, "Daemon läuft — kein Deck gefunden (USB prüfen)")
         if self._daemon_was_connected != status.get("connected"):
             self._daemon_was_connected = status.get("connected")
 
-        # Seiten-Sync: Deck → UI (Seitenwechsel per Taste spiegeln)
+        # Seiten-Sync: Deck → UI
         daemon_page = status.get("page")
         if (daemon_page is not None and daemon_page != self.page_idx
                 and daemon_page < self._page_bar.count()):
@@ -221,13 +305,18 @@ class MainWindow(QMainWindow):
                 serial = connected_serial  # vom Daemon belegt
             label = f"{deck_type}" + (f"  [{serial}]" if serial else "")
             self._device_combo.addItem(label, serial)
+        self._device_combo.insertSeparator(self._device_combo.count())
+        self._device_combo.addItem("⟳  Geräte suchen…", RESCAN)
         wanted = self.cfg.get("device", {}).get("serial")
         idx = self._device_combo.findData(wanted)
         self._device_combo.setCurrentIndex(idx if idx >= 0 else 0)
 
     def _on_device_selected(self, idx: int):
-        serial = self._device_combo.itemData(idx)
-        self.cfg.setdefault("device", {})["serial"] = serial
+        data = self._device_combo.itemData(idx)
+        if data == RESCAN:
+            self._refresh_devices()
+            return
+        self.cfg.setdefault("device", {})["serial"] = data
         self._save_and_reload()
 
     # ── Seiten ────────────────────────────────────────────────────────
@@ -248,7 +337,6 @@ class MainWindow(QMainWindow):
         self.selected_key = None
         self.panel.clear_selection()
         self._refresh_grid()
-        # Seiten-Sync: UI → Deck (außer der Wechsel kam gerade vom Deck)
         if not self._syncing_page:
             ipc_request({"cmd": "page", "page": idx}, timeout=1.0)
 
@@ -294,12 +382,13 @@ class MainWindow(QMainWindow):
         actions = dict(kc.get("actions", {}))
         actions["single"] = {"id": action_id, "params": {}}
         kc["actions"] = actions
-        if not kc.get("label"):
-            kc["label"] = spec.name if len(spec.name) <= 12 else ""
-        if not kc.get("icon"):
-            kc["icon"] = spec.icon
-        if spec.toggle and not kc.get("icon_active"):
+        # Neue Aktion → Grafik und Beschriftung der Aktion übernehmen
+        kc["label"] = spec.name if len(spec.name) <= 12 else ""
+        kc["icon"] = spec.icon
+        if spec.toggle:
             kc["icon_active"] = spec.icon_active
+        else:
+            kc.pop("icon_active", None)
         set_key_config(self.cfg, self.page_idx, key_idx, kc)
         self._save_and_reload()
         self._refresh_grid()
@@ -341,20 +430,6 @@ class MainWindow(QMainWindow):
     def _on_brightness(self):
         self.cfg["brightness"] = self._bright.value()
         self._save_and_reload()
-
-    def _on_autostart(self, enabled: bool):
-        try:
-            if enabled:
-                autostart.install()
-            else:
-                autostart.uninstall()
-        except Exception as e:
-            QMessageBox.warning(self, "Autostart", f"Fehler: {e}")
-
-    def _open_spotify(self):
-        dialog = SpotifyDialog(self.cfg, self)
-        dialog.exec()
-        self.cfg = load_config()
 
     def _save_and_reload(self):
         save_config(self.cfg)

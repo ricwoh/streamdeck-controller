@@ -92,16 +92,23 @@ class DeckDaemon:
         action = self._key_action(key, trigger)
         if not action:
             return
-        spec = ACTIONS_BY_ID.get(action.get("id", ""))
-        if spec and spec.toggle:
+        # Aktionskette: Liste von Aktionen wird nacheinander ausgeführt
+        actions = action if isinstance(action, list) else [action]
+        specs = [ACTIONS_BY_ID.get(a.get("id", "")) for a in actions]
+        if any(s and s.toggle for s in specs):
             with self._lock:
                 state = self._toggle.get((self.page, key), False)
                 self._toggle[(self.page, key)] = not state
             self.render_one(key)
         else:
             self._flash(key)
-        threading.Thread(target=self.executor.execute, args=(action,),
-                         daemon=True, name=f"action-{action.get('id')}").start()
+
+        def run_chain():
+            for a in actions:
+                self.executor.execute(a)
+
+        threading.Thread(target=run_chain, daemon=True,
+                         name=f"action-{actions[0].get('id')}").start()
 
     def _on_deck_event(self, _deck, key: int, pressed: bool):
         try:

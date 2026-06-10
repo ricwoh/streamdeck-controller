@@ -1,7 +1,9 @@
 """Konfigurations-Panel für eine ausgewählte Taste.
 
-Drei Trigger pro Taste: Drücken (1×), Doppelt (2×), Halten — jeweils mit
-eigener Funktion und Parametern. Änderungen werden sofort gespeichert.
+Drei Trigger pro Taste (Drücken / 2× / Halten), jeder Trigger kann eine
+Aktionskette tragen: per „+“ kommt eine zweite Aktion dazu (geteilte Breite),
+ab drei Aktionen wechselt die Ansicht in eine nummerierte Ketten-Leiste
+(1 → 2 → 3 …) mit Editor für den gewählten Schritt.
 """
 
 from copy import deepcopy
@@ -9,8 +11,8 @@ from copy import deepcopy
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QComboBox, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel,
+    QLineEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from ..actions import ACTION_LIBRARY, CATEGORIES, get_spec
@@ -19,23 +21,25 @@ from .icon_picker import IconPicker
 from .widgets import icon_pixmap
 
 TRIGGERS = [("single", "Drücken"), ("double", "2× Drücken"), ("hold", "Halten")]
+MAX_ACTIONS = 6
+
+_SMALL = "padding:2px;font-weight:bold;"
 
 
-class TriggerEditor(QWidget):
-    """Funktion + Parameter für einen Trigger (single/double/hold)."""
+class ActionStepEditor(QWidget):
+    """Eine Aktion: Funktions-Dropdown + Parameter."""
 
     changed = Signal()
 
-    def __init__(self, trigger: str, pages_provider=None, parent=None):
+    def __init__(self, pages_provider=None, parent=None):
         super().__init__(parent)
-        self.trigger = trigger
         self._pages_provider = pages_provider or (lambda: [])
         self._param_edits: dict[str, QWidget] = {}
         self._loading = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
 
         self._combo = QComboBox()
         self._combo.addItem("— Keine Funktion —", "")
@@ -52,13 +56,8 @@ class TriggerEditor(QWidget):
 
         self._params_form = QFormLayout()
         self._params_form.setContentsMargins(0, 0, 0, 0)
+        self._params_form.setSpacing(4)
         layout.addLayout(self._params_form)
-
-        self._hint = QLabel("")
-        self._hint.setWordWrap(True)
-        self._hint.setStyleSheet(f"color:{style.SUBTEXT};font-size:11px;")
-        layout.addWidget(self._hint)
-        layout.addStretch()
 
     def load(self, action: dict | None):
         self._loading = True
@@ -90,6 +89,10 @@ class TriggerEditor(QWidget):
             params[p.key] = value
         return {"id": action_id, "params": params}
 
+    def title(self) -> str:
+        spec = get_spec(self._combo.currentData() or "")
+        return spec.name if spec else "—"
+
     def _on_combo(self):
         if self._loading:
             return
@@ -102,9 +105,9 @@ class TriggerEditor(QWidget):
         self._param_edits.clear()
 
         spec = get_spec(self._combo.currentData() or "")
-        self._hint.setText(spec.description if spec else "")
         if not spec:
             return
+        self.setToolTip(spec.description or spec.name)
         for p in spec.params:
             if p.kind == "page":
                 combo = QComboBox()
@@ -127,10 +130,234 @@ class TriggerEditor(QWidget):
             self._param_edits[p.key] = edit
 
 
-class KeyConfigPanel(QWidget):
-    """Rechtes Panel: Beschriftung, Trigger-Tabs, Icons. Speichert live."""
+class TriggerEditor(QWidget):
+    """Aktionskette für einen Trigger (single/double/hold)."""
 
-    changed = Signal()          # Konfiguration geändert → speichern + neu zeichnen
+    changed = Signal()
+
+    def __init__(self, trigger: str, pages_provider=None, parent=None):
+        super().__init__(parent)
+        self.trigger = trigger
+        self._pages_provider = pages_provider or (lambda: [])
+        self._steps: list[ActionStepEditor] = []
+        self._selected_step = 0
+        self._loading = False
+
+        self._root = QVBoxLayout(self)
+        self._root.setContentsMargins(8, 8, 8, 8)
+        self._root.setSpacing(6)
+        self.load(None)
+
+    # ── Laden / Wert ──────────────────────────────────────────────────
+    def load(self, action):
+        """action: None | dict | list[dict]"""
+        self._loading = True
+        if action is None:
+            values = [None]
+        elif isinstance(action, list):
+            values = action or [None]
+        else:
+            values = [action]
+        self._selected_step = 0
+        self._build_steps(values)
+        self._loading = False
+
+    def value(self):
+        """None | dict (eine Aktion) | list[dict] (Kette)"""
+        actions = [v for v in (s.value() for s in self._steps) if v]
+        if not actions:
+            return None
+        if len(actions) == 1:
+            return actions[0]
+        return actions
+
+    # ── Aufbau ────────────────────────────────────────────────────────
+    def _clear_layout(self):
+        while self._root.count():
+            item = self._root.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            elif item.layout():
+                self._clear_sub(item.layout())
+
+    def _clear_sub(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            elif item.layout():
+                self._clear_sub(item.layout())
+        layout.deleteLater()
+
+    def _make_steps(self, values) -> list[ActionStepEditor]:
+        steps = []
+        for v in values:
+            step = ActionStepEditor(pages_provider=self._pages_provider)
+            step.load(v)
+            step.changed.connect(self._on_step_changed)
+            steps.append(step)
+        return steps
+
+    def _build_steps(self, values):
+        self._clear_layout()
+        self._steps = self._make_steps(values)
+        if len(self._steps) <= 2:
+            self._build_compact()
+        else:
+            self._build_chain()
+
+    def _build_compact(self):
+        """1–2 Aktionen: nebeneinander, + zum Erweitern, ✕ zum Entfernen."""
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        for i, step in enumerate(self._steps):
+            box = QVBoxLayout()
+            box.setSpacing(4)
+            if len(self._steps) > 1:
+                head = QHBoxLayout()
+                num = QLabel(f"Aktion {i + 1}")
+                num.setStyleSheet(f"color:{style.SUBTEXT};font-size:11px;font-weight:bold;")
+                head.addWidget(num)
+                head.addStretch()
+                rm = QPushButton("✕")
+                rm.setFixedSize(22, 22)
+                rm.setStyleSheet(_SMALL)
+                rm.setToolTip("Aktion entfernen")
+                rm.clicked.connect(lambda _, idx=i: self._remove_step(idx))
+                head.addWidget(rm)
+                box.addLayout(head)
+            box.addWidget(step)
+            box.addStretch()
+            row.addLayout(box, stretch=1)
+
+        add = QPushButton("+")
+        add.setFixedSize(26, 26)
+        add.setStyleSheet(_SMALL)
+        add.setToolTip("Weitere Aktion hinzufügen (Kette)")
+        add.clicked.connect(self._add_step)
+        add_box = QVBoxLayout()
+        add_box.addWidget(add)
+        add_box.addStretch()
+        row.addLayout(add_box)
+        self._root.addLayout(row)
+        self._root.addStretch()
+
+    def _build_chain(self):
+        """3+ Aktionen: nummerierte Ketten-Leiste 1 → 2 → 3, Editor darunter."""
+        chips = QHBoxLayout()
+        chips.setSpacing(4)
+        label = QLabel("Kette:")
+        label.setStyleSheet(f"color:{style.SUBTEXT};font-size:11px;font-weight:bold;")
+        chips.addWidget(label)
+        for i, step in enumerate(self._steps):
+            if i:
+                arrow = QLabel("→")
+                arrow.setStyleSheet(f"color:{style.SUBTEXT};")
+                chips.addWidget(arrow)
+            chip = QPushButton(str(i + 1))
+            chip.setFixedSize(26, 26)
+            chip.setToolTip(step.title())
+            selected = i == self._selected_step
+            chip.setStyleSheet(
+                f"padding:0;border-radius:13px;font-weight:bold;"
+                + (f"background:{style.ACCENT};color:{style.BG};border:none;"
+                   if selected else ""))
+            chip.clicked.connect(lambda _, idx=i: self._select_step(idx))
+            chips.addWidget(chip)
+        add = QPushButton("+")
+        add.setFixedSize(26, 26)
+        add.setStyleSheet(_SMALL)
+        add.setToolTip("Weitere Aktion hinzufügen")
+        if len(self._steps) >= MAX_ACTIONS:
+            add.setEnabled(False)
+        add.clicked.connect(self._add_step)
+        chips.addWidget(add)
+        chips.addStretch()
+        self._root.addLayout(chips)
+
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet(f"color:{style.SURFACE};")
+        self._root.addWidget(sep)
+
+        # Editor des gewählten Schritts + Werkzeuge
+        current = self._steps[self._selected_step]
+        head = QHBoxLayout()
+        title = QLabel(f"Aktion {self._selected_step + 1} von {len(self._steps)}")
+        title.setStyleSheet(f"color:{style.TEXT};font-size:11px;font-weight:bold;")
+        head.addWidget(title)
+        head.addStretch()
+        for text, tip, handler, enabled in (
+            ("↑", "Nach vorne schieben", lambda: self._move_step(-1), self._selected_step > 0),
+            ("↓", "Nach hinten schieben", lambda: self._move_step(+1),
+             self._selected_step < len(self._steps) - 1),
+            ("✕", "Aktion entfernen", lambda: self._remove_step(self._selected_step), True),
+        ):
+            btn = QPushButton(text)
+            btn.setFixedSize(22, 22)
+            btn.setStyleSheet(_SMALL)
+            btn.setToolTip(tip)
+            btn.setEnabled(enabled)
+            btn.clicked.connect(handler)
+            head.addWidget(btn)
+        self._root.addLayout(head)
+        self._root.addWidget(current)
+        self._root.addStretch()
+
+    # ── Ketten-Operationen ────────────────────────────────────────────
+    def _current_values(self) -> list:
+        return [s.value() for s in self._steps]
+
+    def _add_step(self):
+        if len(self._steps) >= MAX_ACTIONS:
+            return
+        values = self._current_values() + [None]
+        self._selected_step = len(values) - 1
+        self._build_steps(values)
+        # noch keine Funktion gewählt → kein changed nötig
+
+    def _remove_step(self, idx: int):
+        values = self._current_values()
+        values.pop(idx)
+        if not values:
+            values = [None]
+        self._selected_step = max(0, min(self._selected_step, len(values) - 1))
+        self._build_steps(values)
+        self._emit_changed()
+
+    def _move_step(self, delta: int):
+        values = self._current_values()
+        i, j = self._selected_step, self._selected_step + delta
+        if 0 <= j < len(values):
+            values[i], values[j] = values[j], values[i]
+            self._selected_step = j
+            self._build_steps(values)
+            self._emit_changed()
+
+    def _select_step(self, idx: int):
+        self._selected_step = idx
+        self._build_steps(self._current_values())
+
+    def _on_step_changed(self):
+        # Bei 3+ Aktionen Tooltips/Chips aktuell halten
+        if len(self._steps) > 2 and not self._loading:
+            values = self._current_values()
+            self._build_steps(values)
+        self._emit_changed()
+
+    def _emit_changed(self):
+        if not self._loading:
+            self.changed.emit()
+
+
+class KeyConfigPanel(QWidget):
+    """Panel unter dem Grid: Beschriftung, Trigger-Tabs, Icons. Speichert live."""
+
+    changed = Signal()
 
     def __init__(self, pages_provider=None, parent=None):
         super().__init__(parent)
@@ -142,12 +369,21 @@ class KeyConfigPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
+        head = QHBoxLayout()
         self._title = QLabel("Taste wählen oder Funktion hineinziehen")
         self._title.setStyleSheet(f"font-weight:bold;font-size:14px;color:{style.TEXT};")
-        self._title.setWordWrap(True)
-        layout.addWidget(self._title)
+        head.addWidget(self._title)
+        head.addStretch()
+        self._clear_btn = QPushButton("Taste leeren")
+        self._clear_btn.setStyleSheet(
+            f"QPushButton{{color:{style.RED};border:1px solid {style.RED};"
+            f"border-radius:6px;padding:3px 10px;}}")
+        self._clear_btn.clicked.connect(self._clear_key)
+        head.addWidget(self._clear_btn)
+        layout.addLayout(head)
 
         form = QFormLayout()
+        form.setSpacing(4)
         self._label_edit = QLineEdit()
         self._label_edit.setPlaceholderText("Text auf der Taste")
         self._label_edit.editingFinished.connect(self._on_change)
@@ -161,43 +397,30 @@ class KeyConfigPanel(QWidget):
             editor.changed.connect(self._on_change)
             self._editors[trigger] = editor
             self._tabs.addTab(editor, title)
-        layout.addWidget(self._tabs)
+        layout.addWidget(self._tabs, stretch=1)
 
         icons = QGroupBox("Tastengrafik")
-        grid = QVBoxLayout(icons)
-        self._icon_rows: dict[str, tuple[QLabel, str]] = {}
+        icon_row = QHBoxLayout(icons)
+        icon_row.setSpacing(10)
+        self._icon_rows: dict[str, QLabel] = {}
         for which, label in (("icon", "Normal"), ("icon_active", "Aktiv")):
-            row = QHBoxLayout()
-            row.addWidget(QLabel(f"{label}:"))
+            icon_row.addWidget(QLabel(f"{label}:"))
             preview = QLabel()
-            preview.setFixedSize(44, 44)
+            preview.setFixedSize(40, 40)
             preview.setStyleSheet(f"background:{style.SURFACE};border-radius:6px;")
             preview.setAlignment(Qt.AlignCenter)
-            row.addWidget(preview)
+            icon_row.addWidget(preview)
             pick = QPushButton("Wählen…")
             pick.clicked.connect(lambda _, w=which: self._pick_icon(w))
-            row.addWidget(pick)
+            icon_row.addWidget(pick)
             clear = QPushButton("✕")
-            clear.setFixedWidth(30)
-            clear.setStyleSheet("padding:2px;font-weight:bold;")
+            clear.setFixedSize(24, 24)
+            clear.setStyleSheet(_SMALL)
             clear.clicked.connect(lambda _, w=which: self._set_icon(w, ""))
-            row.addWidget(clear)
-            row.addStretch()
-            grid.addLayout(row)
+            icon_row.addWidget(clear)
             self._icon_rows[which] = preview
-        hint = QLabel("„Aktiv“ wird bei Umschalt-Funktionen gezeigt (z.B. Play/Pause).")
-        hint.setWordWrap(True)
-        hint.setStyleSheet(f"color:{style.SUBTEXT};font-size:11px;")
-        grid.addWidget(hint)
+        icon_row.addStretch()
         layout.addWidget(icons)
-
-        self._clear_btn = QPushButton("Taste leeren")
-        self._clear_btn.setStyleSheet(
-            f"QPushButton{{color:{style.RED};border:1px solid {style.RED};"
-            f"border-radius:4px;padding:5px;}}")
-        self._clear_btn.clicked.connect(self._clear_key)
-        layout.addWidget(self._clear_btn)
-        layout.addStretch()
 
         self.setEnabled(False)
 
@@ -229,7 +452,6 @@ class KeyConfigPanel(QWidget):
         self._loading = False
 
     def current_key_cfg(self) -> dict:
-        """Aktuellen Panel-Zustand als Key-Konfiguration ausgeben."""
         kc = {}
         label = self._label_edit.text().strip()
         if label:
@@ -267,7 +489,7 @@ class KeyConfigPanel(QWidget):
 
     def _update_preview(self, which: str, ref: str):
         preview = self._icon_rows[which]
-        px = icon_pixmap(ref, 40) if ref else None
+        px = icon_pixmap(ref, 36) if ref else None
         preview.setPixmap(px or QPixmap())
 
     def _clear_key(self):

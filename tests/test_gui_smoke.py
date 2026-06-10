@@ -71,10 +71,57 @@ def test_page_goto_param_is_dropdown(qapp):
     assert value["id"] == "page_goto"
     assert value["params"]["page"] == 2  # Dropdown hält die 1-basierte Auswahl
 
-    combo = editor._param_edits["page"]
+    combo = editor._steps[0]._param_edits["page"]
     assert combo.count() == 3
     combo.setCurrentIndex(2)
     assert editor.value()["params"]["page"] == 3
+
+
+def test_action_chain_roundtrip(qapp):
+    from streamdeck_controller.gui.key_panel import TriggerEditor
+    editor = TriggerEditor("single")
+
+    # Eine Aktion → dict (kompatibel zum alten Format)
+    editor.load({"id": "sys_mute", "params": {}})
+    assert editor.value() == {"id": "sys_mute", "params": {}}
+
+    # Kette laden → Liste bleibt erhalten, Reihenfolge stimmt
+    chain = [{"id": "sys_mute", "params": {}},
+             {"id": "sys_lock", "params": {}},
+             {"id": "sys_suspend", "params": {}}]
+    editor.load(chain)
+    assert editor.value() == chain
+    assert len(editor._steps) == 3
+
+    # Schritt entfernen → 2 Aktionen als Liste
+    editor._remove_step(1)
+    assert editor.value() == [{"id": "sys_mute", "params": {}},
+                              {"id": "sys_suspend", "params": {}}]
+
+
+def test_chain_executes_all_actions():
+    from streamdeck_controller.daemon import DeckDaemon
+
+    executed = []
+
+    class _Exec:
+        def execute(self, a):
+            executed.append(a.get("id"))
+
+    chain = [{"id": "sys_mute", "params": {}}, {"id": "sys_lock", "params": {}}]
+    daemon = DeckDaemon.__new__(DeckDaemon)
+    daemon.cfg = {"pages": [{"keys": {"0": {"actions": {"single": chain}}}}]}
+    daemon.page = 0
+    daemon.deck = None
+    daemon.executor = _Exec()
+    import threading
+    daemon._lock = threading.RLock()
+    daemon._toggle = {}
+
+    daemon._fire(0, "single")
+    import time
+    time.sleep(0.2)  # Kette läuft im Thread
+    assert executed == ["sys_mute", "sys_lock"]
 
 
 def test_icon_packs_discovered():

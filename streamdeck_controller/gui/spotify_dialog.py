@@ -71,7 +71,7 @@ class SpotifyDialog(QDialog):
 
     def _refresh_status(self):
         sp_cfg = self.cfg.get("spotify", {})
-        client = SpotifyClient(sp_cfg.get("client_id", ""), sp_cfg.get("client_secret", ""))
+        client = SpotifyClient(sp_cfg.get("client_id", ""))
         if client.ready:
             self._status.setText(f"<span style='color:{style.GREEN}'>✅ Verbunden</span>")
         else:
@@ -94,7 +94,7 @@ class SpotifyDialog(QDialog):
 
         def worker():
             try:
-                auth.login(client_id, sp_cfg.get("client_secret", ""),
+                auth.login(client_id,
                            sp_cfg.get("redirect_uri", "http://127.0.0.1:8888/callback"))
                 self._bridge.done.emit(True, "")
             except Exception as e:

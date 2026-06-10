@@ -53,7 +53,7 @@ def clear_token():
     TOKEN_PATH.unlink(missing_ok=True)
 
 
-def refresh_token(client_id: str, client_secret: str = "") -> dict | None:
+def refresh_token(client_id: str) -> dict | None:
     """Access-Token per Refresh-Token erneuern."""
     token = load_token()
     if not token or "refresh_token" not in token:
@@ -63,8 +63,6 @@ def refresh_token(client_id: str, client_secret: str = "") -> dict | None:
         "refresh_token": token["refresh_token"],
         "client_id": client_id,
     }
-    if client_secret:
-        data["client_secret"] = client_secret
     try:
         r = requests.post(TOKEN_URL, data=data, timeout=10)
         r.raise_for_status()
@@ -118,7 +116,7 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-def login(client_id: str, client_secret: str = "",
+def login(client_id: str,
           redirect_uri: str = "http://127.0.0.1:8888/callback",
           open_browser: bool = True, timeout: int = 180) -> dict:
     """Kompletten PKCE-Login durchführen. Gibt das Token-Dict zurück.
@@ -177,8 +175,6 @@ def login(client_id: str, client_secret: str = "",
         "client_id": client_id,
         "code_verifier": verifier,
     }
-    if client_secret:
-        data["client_secret"] = client_secret
     r = requests.post(TOKEN_URL, data=data, timeout=10)
     if r.status_code != 200:
         raise RuntimeError(f"Token-Tausch fehlgeschlagen: {r.status_code} {r.text[:200]}")

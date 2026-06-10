@@ -16,7 +16,6 @@ DEFAULT_CONFIG = {
     "device": {"serial": None},
     "spotify": {
         "client_id": "",
-        "client_secret": "",
         "redirect_uri": "http://127.0.0.1:8888/callback",
     },
     "timing": {"double_window_ms": 300, "hold_ms": 500},
@@ -56,7 +55,6 @@ def _migrate_v1(old: dict) -> dict:
 
     old_spotify = old.get("spotify_api", {})
     cfg["spotify"]["client_id"] = old_spotify.get("client_id", "")
-    cfg["spotify"]["client_secret"] = old_spotify.get("client_secret", "")
 
     pages = []
     for old_page in old.get("pages", []):

@@ -52,7 +52,7 @@ class DeckDaemon:
     # ── Hilfen ────────────────────────────────────────────────────────
     def _make_spotify(self) -> SpotifyClient:
         sp_cfg = self.cfg.get("spotify", {})
-        return SpotifyClient(sp_cfg.get("client_id", ""), sp_cfg.get("client_secret", ""))
+        return SpotifyClient(sp_cfg.get("client_id", ""))
 
     def _mtime(self) -> float:
         try:

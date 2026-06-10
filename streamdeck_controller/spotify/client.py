@@ -14,9 +14,8 @@ API = "https://api.spotify.com/v1"
 
 
 class SpotifyClient:
-    def __init__(self, client_id: str, client_secret: str = ""):
+    def __init__(self, client_id: str):
         self.client_id = client_id
-        self.client_secret = client_secret
         self._token: dict | None = auth.load_token()
 
     # ── Token-Handling ───────────────────────────────────────────────
@@ -30,7 +29,7 @@ class SpotifyClient:
         if not self._token:
             return None
         if time.time() > self._token.get("expires_at", 0) - 30:
-            self._token = auth.refresh_token(self.client_id, self.client_secret)
+            self._token = auth.refresh_token(self.client_id)
         return self._token.get("access_token") if self._token else None
 
     def _request(self, method: str, path: str, **kwargs):
@@ -47,7 +46,7 @@ class SpotifyClient:
             return None
         if r.status_code == 401:
             # Token abgelaufen → einmal erneuern und wiederholen
-            self._token = auth.refresh_token(self.client_id, self.client_secret)
+            self._token = auth.refresh_token(self.client_id)
             token = self._token.get("access_token") if self._token else None
             if not token:
                 return None

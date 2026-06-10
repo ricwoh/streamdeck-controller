@@ -175,7 +175,7 @@ def _cmd_spotify(args: list[str]) -> int:
             cfg["spotify"]["client_id"] = client_id
             save_config(cfg)
         try:
-            auth.login(client_id, sp_cfg.get("client_secret", ""),
+            auth.login(client_id,
                        sp_cfg.get("redirect_uri", "http://127.0.0.1:8888/callback"))
         except RuntimeError as e:
             print(f"Fehler: {e}")
@@ -190,7 +190,7 @@ def _cmd_spotify(args: list[str]) -> int:
         print("Spotify-Anmeldung entfernt.")
         return 0
 
-    client = SpotifyClient(sp_cfg.get("client_id", ""), sp_cfg.get("client_secret", ""))
+    client = SpotifyClient(sp_cfg.get("client_id", ""))
     if client.ready:
         info = client.current_song_info()
         print("● Spotify: verbunden")

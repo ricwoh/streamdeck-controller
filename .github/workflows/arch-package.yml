@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Install CI tools
         run: |
-          pacman -Syu --noconfirm --needed git sudo python python-pip python-pytest namcap pyside6 python-pillow hidapi
+          pacman -Syu --noconfirm --needed git sudo python python-pip python-pytest namcap pyside6 python-pillow python-requests hidapi
 
       - name: Check out repository
         uses: actions/checkout@v4

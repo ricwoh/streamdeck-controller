@@ -78,19 +78,37 @@ def refresh_token(client_id: str, client_secret: str = "") -> dict | None:
     return new
 
 
+def parse_callback(path: str) -> tuple[str | None, str | None]:
+    """OAuth-Callback-Pfad auswerten → (code, error).
+
+    Anfragen ohne code/error (z.B. /favicon.ico) liefern (None, None)
+    und dürfen den Login nicht als Fehler werten.
+    """
+    params = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+    if "code" in params:
+        return params["code"][0], None
+    if "error" in params:
+        return None, params["error"][0]
+    return None, None
+
+
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     code = None
     error = None
 
     def do_GET(self):
-        query = urllib.parse.urlparse(self.path).query
-        params = urllib.parse.parse_qs(query)
-        if "code" in params:
-            _CallbackHandler.code = params["code"][0]
+        code, error = parse_callback(self.path)
+        if code:
+            _CallbackHandler.code = code
             body = "<h2>✅ Spotify verbunden!</h2><p>Du kannst dieses Fenster schließen.</p>"
+        elif error:
+            _CallbackHandler.error = error
+            body = f"<h2>❌ Fehler: {error}</h2>"
         else:
-            _CallbackHandler.error = params.get("error", ["unbekannt"])[0]
-            body = f"<h2>❌ Fehler: {_CallbackHandler.error}</h2>"
+            # favicon.ico u.ä. — ignorieren
+            self.send_response(404)
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
@@ -147,9 +165,9 @@ def login(client_id: str, client_secret: str = "",
         server.shutdown()
         server.server_close()
 
-    if _CallbackHandler.error:
-        raise RuntimeError(f"Spotify-Login abgelehnt: {_CallbackHandler.error}")
     if not _CallbackHandler.code:
+        if _CallbackHandler.error:
+            raise RuntimeError(f"Spotify-Login abgelehnt: {_CallbackHandler.error}")
         raise RuntimeError("Spotify-Login: Zeitüberschreitung — kein Callback erhalten.")
 
     data = {

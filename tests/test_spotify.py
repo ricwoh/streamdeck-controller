@@ -21,6 +21,15 @@ def test_to_uri_invalid():
     assert SpotifyClient.to_uri("") is None
 
 
+def test_parse_callback():
+    from streamdeck_controller.spotify.auth import parse_callback
+    assert parse_callback("/callback?code=abc123") == ("abc123", None)
+    assert parse_callback("/callback?error=access_denied") == (None, "access_denied")
+    # favicon & Co. dürfen NICHT als Fehler gewertet werden
+    assert parse_callback("/favicon.ico") == (None, None)
+    assert parse_callback("/callback") == (None, None)
+
+
 def test_not_ready_without_client_id(monkeypatch, tmp_path):
     from streamdeck_controller.spotify import auth
     monkeypatch.setattr(auth, "TOKEN_PATH", tmp_path / "token.json")

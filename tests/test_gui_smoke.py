@@ -61,3 +61,25 @@ def test_add_and_delete_page(window):
     window._add_page()
     assert window._page_bar.count() == 2
     assert len(window.cfg["pages"]) == 2
+
+
+def test_page_goto_param_is_dropdown(qapp):
+    from streamdeck_controller.gui.key_panel import TriggerEditor
+    editor = TriggerEditor("single", pages_provider=lambda: ["Hauptseite", "Musik", "System"])
+    editor.load({"id": "page_goto", "params": {"page": 2}})
+    value = editor.value()
+    assert value["id"] == "page_goto"
+    assert value["params"]["page"] == 2  # Dropdown hält die 1-basierte Auswahl
+
+    combo = editor._param_edits["page"]
+    assert combo.count() == 3
+    combo.setCurrentIndex(2)
+    assert editor.value()["params"]["page"] == 3
+
+
+def test_icon_packs_discovered():
+    from streamdeck_controller.gui.icon_picker import discover_packs
+    packs = discover_packs()
+    assert "Standard" in packs
+    assert len(packs["Standard"]) >= 40
+    assert "Eigene" in packs  # lose Icons im icons/-Ordner

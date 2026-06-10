@@ -30,14 +30,16 @@ class MainWindow(QMainWindow):
         self.selected_key: int | None = None
         self._daemon_was_connected = None
 
+        self._syncing_page = False
+
         self.setWindowTitle(f"Stream Deck Controller {__version__}")
-        self.setMinimumSize(980, 560)
+        self.setMinimumSize(820, 640)
         self._build_ui()
         self._refresh_all()
 
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self._poll_status)
-        self._status_timer.start(2000)
+        self._status_timer.start(1000)
         self._poll_status()
 
     # ── Aufbau ────────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ class MainWindow(QMainWindow):
         top.addWidget(self._device_combo)
         refresh_btn = QPushButton("⟳")
         refresh_btn.setFixedWidth(30)
+        refresh_btn.setStyleSheet("padding:2px;font-weight:bold;")
         refresh_btn.setToolTip("Geräte neu suchen")
         refresh_btn.clicked.connect(self._refresh_devices)
         top.addWidget(refresh_btn)
@@ -81,12 +84,12 @@ class MainWindow(QMainWindow):
         top.addWidget(self._autostart_chk)
         root.addLayout(top)
 
-        # Hauptbereich: Grid | Panel | Palette
+        # Hauptbereich: links Grid + Tasten-Konfiguration, rechts Palette
         main = QHBoxLayout()
         main.setSpacing(14)
 
         left = QVBoxLayout()
-        left.setSpacing(8)
+        left.setSpacing(10)
 
         page_row = QHBoxLayout()
         self._page_bar = QTabBar()
@@ -96,11 +99,13 @@ class MainWindow(QMainWindow):
         page_row.addWidget(self._page_bar)
         add_page = QPushButton("+")
         add_page.setFixedWidth(28)
+        add_page.setStyleSheet("padding:2px;font-weight:bold;")
         add_page.setToolTip("Seite hinzufügen")
         add_page.clicked.connect(self._add_page)
         page_row.addWidget(add_page)
         del_page = QPushButton("−")
         del_page.setFixedWidth(28)
+        del_page.setStyleSheet("padding:2px;font-weight:bold;")
         del_page.setToolTip("Seite löschen")
         del_page.clicked.connect(self._del_page)
         page_row.addWidget(del_page)
@@ -118,7 +123,6 @@ class MainWindow(QMainWindow):
         grid_wrap.addWidget(self.grid)
         grid_wrap.addStretch()
         left.addLayout(grid_wrap)
-        left.addStretch()
 
         bright_row = QHBoxLayout()
         bright_row.addWidget(QLabel("Helligkeit:"))
@@ -133,19 +137,22 @@ class MainWindow(QMainWindow):
         bright_row.addWidget(self._bright_lbl)
         bright_row.addStretch()
         left.addLayout(bright_row)
-        main.addLayout(left, stretch=4)
 
-        self.panel = KeyConfigPanel()
+        # Tasten-Konfiguration unter dem Grid (2-Spalten-Layout)
+        self.panel = KeyConfigPanel(
+            pages_provider=lambda: [p.get("name", "Seite")
+                                    for p in self.cfg.get("pages", [])])
         self.panel.changed.connect(self._on_panel_changed)
         panel_scroll = QScrollArea()
         panel_scroll.setWidgetResizable(True)
         panel_scroll.setWidget(self.panel)
-        panel_scroll.setMinimumWidth(300)
-        main.addWidget(panel_scroll, stretch=3)
+        left.addWidget(panel_scroll, stretch=1)
+        main.addLayout(left, stretch=5)
 
         self.palette = ActionPalette()
-        self.palette.setMinimumWidth(230)
-        main.addWidget(self.palette, stretch=3)
+        self.palette.setMinimumWidth(250)
+        self.palette.setMaximumWidth(330)
+        main.addWidget(self.palette, stretch=2)
 
         root.addLayout(main)
         self._refresh_devices()
@@ -174,6 +181,16 @@ class MainWindow(QMainWindow):
             self._status_lbl.setStyleSheet(f"color:#f9e2af;font-size:12px;")
         if self._daemon_was_connected != status.get("connected"):
             self._daemon_was_connected = status.get("connected")
+
+        # Seiten-Sync: Deck → UI (Seitenwechsel per Taste spiegeln)
+        daemon_page = status.get("page")
+        if (daemon_page is not None and daemon_page != self.page_idx
+                and daemon_page < self._page_bar.count()):
+            self._syncing_page = True
+            try:
+                self._page_bar.setCurrentIndex(daemon_page)
+            finally:
+                self._syncing_page = False
 
     def _start_daemon(self):
         if autostart.is_installed():
@@ -231,6 +248,9 @@ class MainWindow(QMainWindow):
         self.selected_key = None
         self.panel.clear_selection()
         self._refresh_grid()
+        # Seiten-Sync: UI → Deck (außer der Wechsel kam gerade vom Deck)
+        if not self._syncing_page:
+            ipc_request({"cmd": "page", "page": idx}, timeout=1.0)
 
     def _add_page(self):
         pages = self.cfg.setdefault("pages", [])

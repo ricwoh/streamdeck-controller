@@ -88,7 +88,7 @@ ACTION_LIBRARY: list[ActionSpec] = [
     _spec("page_next", "Nächste Seite", "Seiten"),
     _spec("page_prev", "Vorherige Seite", "Seiten"),
     _spec("page_goto", "Zu Seite springen", "Seiten",
-          params=[ParamSpec("page", "Seiten-Nummer (1 = erste)", "1", kind="int")]),
+          params=[ParamSpec("page", "Seite", "", kind="page")]),
 
     # ── Sonstige ──────────────────────────────────────────────────────
     _spec("custom_cmd", "Eigener Befehl", "Sonstige",

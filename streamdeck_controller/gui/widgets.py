@@ -110,13 +110,14 @@ class KeyButton(QPushButton):
     clear_requested = Signal(int)
 
     BASE = (f"QPushButton{{background:{style.BG_ALT};border:2px solid {style.SURFACE};"
-            f"border-radius:10px;color:{style.SUBTEXT};font-size:10px;}}")
-    SELECTED = (f"QPushButton{{background:{style.SURFACE};border:2px solid {style.ACCENT};"
-                f"border-radius:10px;color:{style.ACCENT};font-size:10px;}}")
-    DRAGOVER = (f"QPushButton{{background:{style.SURFACE};border:2px dashed {style.LAVENDER};"
-                f"border-radius:10px;}}")
+            f"border-radius:14px;color:{style.SUBTEXT};font-size:10px;}}"
+            f"QPushButton:hover{{border:2px solid {style.SURFACE_HI};}}")
+    SELECTED = (f"QPushButton{{background:{style.CARD};border:2px solid {style.ACCENT};"
+                f"border-radius:14px;color:{style.ACCENT};font-size:10px;}}")
+    DRAGOVER = (f"QPushButton{{background:{style.CARD};border:2px dashed {style.LAVENDER};"
+                f"border-radius:14px;}}")
     FLASH = (f"QPushButton{{background:{style.SURFACE_HI};border:2px solid {style.LAVENDER};"
-             f"border-radius:10px;}}")
+             f"border-radius:14px;}}")
 
     def __init__(self, idx: int, parent=None):
         super().__init__(parent)

@@ -26,10 +26,11 @@ class TriggerEditor(QWidget):
 
     changed = Signal()
 
-    def __init__(self, trigger: str, parent=None):
+    def __init__(self, trigger: str, pages_provider=None, parent=None):
         super().__init__(parent)
         self.trigger = trigger
-        self._param_edits: dict[str, QLineEdit] = {}
+        self._pages_provider = pages_provider or (lambda: [])
+        self._param_edits: dict[str, QWidget] = {}
         self._loading = False
 
         layout = QVBoxLayout(self)
@@ -74,10 +75,13 @@ class TriggerEditor(QWidget):
         params = {}
         spec = get_spec(action_id)
         for p in (spec.params if spec else ()):
-            text = self._param_edits.get(p.key)
-            if text is None:
+            widget = self._param_edits.get(p.key)
+            if widget is None:
                 continue
-            value = text.text().strip()
+            if p.kind == "page":
+                params[p.key] = widget.currentIndex() + 1  # 1-basiert
+                continue
+            value = widget.text().strip()
             if p.kind == "int":
                 try:
                     value = int(value)
@@ -102,6 +106,19 @@ class TriggerEditor(QWidget):
         if not spec:
             return
         for p in spec.params:
+            if p.kind == "page":
+                combo = QComboBox()
+                for i, name in enumerate(self._pages_provider()):
+                    combo.addItem(f"{i + 1} — {name}")
+                try:
+                    target = int(values.get(p.key, 1))
+                except (TypeError, ValueError):
+                    target = 1
+                combo.setCurrentIndex(max(0, min(target - 1, combo.count() - 1)))
+                combo.activated.connect(lambda *_: self.changed.emit())
+                self._params_form.addRow(p.label + ":", combo)
+                self._param_edits[p.key] = combo
+                continue
             edit = QLineEdit()
             edit.setPlaceholderText(p.placeholder)
             edit.setText(str(values.get(p.key, "")))
@@ -115,10 +132,11 @@ class KeyConfigPanel(QWidget):
 
     changed = Signal()          # Konfiguration geändert → speichern + neu zeichnen
 
-    def __init__(self, parent=None):
+    def __init__(self, pages_provider=None, parent=None):
         super().__init__(parent)
         self._key_cfg: dict = {}
         self._loading = False
+        self._pages_provider = pages_provider
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -139,7 +157,7 @@ class KeyConfigPanel(QWidget):
         self._tabs = QTabWidget()
         self._editors: dict[str, TriggerEditor] = {}
         for trigger, title in TRIGGERS:
-            editor = TriggerEditor(trigger)
+            editor = TriggerEditor(trigger, pages_provider=self._pages_provider)
             editor.changed.connect(self._on_change)
             self._editors[trigger] = editor
             self._tabs.addTab(editor, title)
@@ -161,6 +179,7 @@ class KeyConfigPanel(QWidget):
             row.addWidget(pick)
             clear = QPushButton("✕")
             clear.setFixedWidth(30)
+            clear.setStyleSheet("padding:2px;font-weight:bold;")
             clear.clicked.connect(lambda _, w=which: self._set_icon(w, ""))
             row.addWidget(clear)
             row.addStretch()

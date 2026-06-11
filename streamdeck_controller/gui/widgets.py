@@ -119,18 +119,24 @@ class KeyButton(QPushButton):
     FLASH = (f"QPushButton{{background:{style.SURFACE_HI};border:2px solid {style.LAVENDER};"
              f"border-radius:14px;}}")
 
+    TILE = 84          # Standard-Kachelgröße
+    TILE_COMPACT = 62  # Minimalansicht
+
     def __init__(self, idx: int, parent=None):
         super().__init__(parent)
         self.idx = idx
         self._is_selected = False
         self._has_content = False
-        self.setFixedSize(84, 84)
-        self.setIconSize(QSize(64, 64))
+        self.set_tile(self.TILE)
         self.setAcceptDrops(True)
         self.setStyleSheet(self.BASE)
         self.clicked.connect(lambda: self.selected.emit(self.idx))
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._context_menu)
+
+    def set_tile(self, size: int):
+        self.setFixedSize(size, size)
+        self.setIconSize(QSize(int(size * 0.76), int(size * 0.76)))
 
     def _context_menu(self, pos):
         menu = QMenu(self)
@@ -210,6 +216,7 @@ class KeyGrid(QWidget):
         self._layout.setContentsMargins(8, 8, 8, 8)
         self.buttons: list[KeyButton] = []
         self.cols, self.rows = 0, 0
+        self._compact = False
 
     def rebuild(self, cols: int, rows: int):
         if (cols, rows) == (self.cols, self.rows) and self.buttons:
@@ -219,16 +226,28 @@ class KeyGrid(QWidget):
             self._layout.removeWidget(btn)
             btn.deleteLater()
         self.buttons.clear()
+        tile = KeyButton.TILE_COMPACT if self._compact else KeyButton.TILE
         for r in range(rows):
             for c in range(cols):
                 idx = r * cols + c
                 btn = KeyButton(idx)
+                btn.set_tile(tile)
                 btn.action_dropped.connect(self.action_dropped)
                 btn.key_moved.connect(self.key_moved)
                 btn.selected.connect(self.key_selected)
                 btn.clear_requested.connect(self.key_clear)
                 self._layout.addWidget(btn, r, c)
                 self.buttons.append(btn)
+
+    def set_compact(self, compact: bool):
+        """Minimalansicht: kleinere Kacheln, damit nichts überlappt."""
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self._layout.setSpacing(6 if compact else 10)
+        tile = KeyButton.TILE_COMPACT if compact else KeyButton.TILE
+        for btn in self.buttons:
+            btn.set_tile(tile)
 
     def refresh(self, page: dict, selected: int | None):
         keys = page.get("keys", {})

@@ -24,6 +24,10 @@ EOF
   *) printf 'FEHLER: unbekannte Option: %s\n' "$1" >&2; exit 64 ;;
 esac
 
+# Projekt-venv bevorzugen (dort sind pytest + PySide6 installiert)
+PYTHON="python3"
+[ -x .venv/bin/python ] && PYTHON=".venv/bin/python"
+
 ok() { printf 'OK: %s\n' "$*"; }
 fail() { printf 'FEHLER: %s\n' "$*" >&2; exit 1; }
 info() { printf 'INFO: %s\n' "$*"; }
@@ -63,17 +67,17 @@ secret_hits="$(git grep -nE '(OPENAI_API_KEY|VOICE_TOOLS_OPENAI_KEY|TELEGRAM_BOT
 [ -z "$secret_hits" ] || fail "Mögliche Secrets im Repo:\n$secret_hits"
 ok "Secret-Scan sauber"
 
-python3 -m compileall -q streamdeck_controller
+"$PYTHON" -m compileall -q streamdeck_controller
 ok "Python Syntax ok"
 
 if [ -f requirements.txt ]; then
   ok "requirements.txt vorhanden"
 fi
 
-python3 -m pytest -q
+QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}" "$PYTHON" -m pytest -q
 ok "Tests grün"
 
-python3 tools/static-packaging-check.py
+"$PYTHON" tools/static-packaging-check.py
 ok "Statische Packaging-Checks grün"
 
 case "$ARCH_MODE" in

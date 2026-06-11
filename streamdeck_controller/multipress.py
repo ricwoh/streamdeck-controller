@@ -72,6 +72,11 @@ class KeyPressTracker:
 
     def release(self):
         with self._lock:
+            if not self._pressed:
+                # Release ohne zugehöriges Press (z.B. nach reset() durch
+                # Seitenwechsel, während die Taste noch gehalten wurde) —
+                # sonst feuert die Belegung der NEUEN Seite beim Loslassen.
+                return
             self._pressed = False
             if self._hold_timer:
                 self._hold_timer.cancel()

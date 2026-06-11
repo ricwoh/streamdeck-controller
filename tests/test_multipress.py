@@ -99,6 +99,19 @@ def test_reset_cancels_pending_timers():
     assert fired == []        # kein verspätetes "single" nach dem Reset
 
 
+def test_release_after_reset_does_not_fire():
+    # Seitenwechsel-Bug: page_next feuert beim Drücken, der Daemon ruft
+    # router.reset() — das spätere Loslassen darf auf der neuen Seite
+    # KEINE Aktion auslösen.
+    router, fired = make_router({"single": True})
+    router.event(0, True)
+    assert fired == ["single"]
+    router.reset()            # Seitenwechsel während die Taste gehalten wird
+    router.event(0, False)    # Loslassen erreicht einen frischen Tracker
+    wait()
+    assert fired == ["single"]
+
+
 def test_keys_are_independent():
     fired = []
     router = MultiPressRouter(

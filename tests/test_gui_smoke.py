@@ -124,6 +124,62 @@ def test_chain_executes_all_actions():
     assert executed == ["sys_mute", "sys_lock"]
 
 
+def test_drop_lands_on_selected_trigger_tab(window):
+    # Taste auswählen, Hold-Tab aktivieren → Drop belegt "hold", nicht "single"
+    window._on_action_dropped(1, "sys_mute")          # wählt Taste 1, single
+    window.panel._tabs.setCurrentIndex(2)             # "Halten"
+    window._on_action_dropped(1, "sys_lock")
+    actions = window.cfg["pages"][0]["keys"]["1"]["actions"]
+    assert actions["single"]["id"] == "sys_mute"
+    assert actions["hold"]["id"] == "sys_lock"
+    # Aussehen der Taste bleibt vom Haupt-Trigger bestimmt
+    assert window.cfg["pages"][0]["keys"]["1"]["icon"] == "builtin:sys_mute"
+
+
+def test_drop_on_other_key_uses_single(window):
+    window._on_action_dropped(0, "sys_mute")
+    window.panel._tabs.setCurrentIndex(2)             # Hold-Tab offen …
+    window._on_action_dropped(3, "sys_lock")          # … aber andere Taste
+    assert window.cfg["pages"][0]["keys"]["3"]["actions"]["single"]["id"] == "sys_lock"
+
+
+def test_app_param_offers_installed_apps(qapp, monkeypatch):
+    from streamdeck_controller.gui import key_panel
+    monkeypatch.setattr(key_panel, "installed_apps",
+                        lambda: [("Firefox", "firefox"), ("Krita", "krita")])
+    editor = key_panel.TriggerEditor("single")
+    editor.load({"id": "app_launch", "params": {"cmd": "firefox"}})
+
+    combo = editor._steps[0]._param_edits["cmd"]
+    assert combo.currentText() == "Firefox"           # Befehl → App-Name angezeigt
+    assert editor.value()["params"]["cmd"] == "firefox"
+
+    combo.setEditText("mein-eigener-befehl --jetzt")  # Roh-Befehl bleibt möglich
+    assert editor.value()["params"]["cmd"] == "mein-eigener-befehl --jetzt"
+
+
+def test_palette_docks_on_wide_window(window):
+    window.resize(1280, 900)
+    window._apply_layout_mode()
+    assert window._dock.isVisibleTo(window)
+    assert window._strip.isHidden()
+    assert window.palette.parent() is window._dock
+
+    window.resize(700, 750)
+    window._apply_layout_mode()
+    assert window._dock.isHidden()
+    assert window._strip.isVisibleTo(window)
+    assert window.palette.parent() is window._palette_overlay
+
+
+def test_grid_compact_mode_shrinks_tiles(window):
+    from streamdeck_controller.gui.widgets import KeyButton
+    window.grid.set_compact(True)
+    assert window.grid.buttons[0].width() == KeyButton.TILE_COMPACT
+    window.grid.set_compact(False)
+    assert window.grid.buttons[0].width() == KeyButton.TILE
+
+
 def test_icon_packs_discovered():
     from streamdeck_controller.gui.icon_picker import discover_packs
     packs = discover_packs()

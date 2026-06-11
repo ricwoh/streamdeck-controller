@@ -11,11 +11,12 @@ from copy import deepcopy
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget,
+    QComboBox, QCompleter, QFormLayout, QFrame, QGroupBox, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from ..actions import ACTION_LIBRARY, CATEGORIES, get_spec
+from ..apps import list_desktop_apps
 from . import style
 from .icon_picker import IconPicker
 from .widgets import icon_pixmap
@@ -24,6 +25,16 @@ TRIGGERS = [("single", "Drücken"), ("double", "2× Drücken"), ("hold", "Halten
 MAX_ACTIONS = 6
 
 _SMALL = "padding:2px;font-weight:bold;"
+
+_app_cache: list[tuple[str, str]] | None = None
+
+
+def installed_apps() -> list[tuple[str, str]]:
+    """(Name, Befehl) aller Desktop-Apps — einmal pro GUI-Lauf gescannt."""
+    global _app_cache
+    if _app_cache is None:
+        _app_cache = list_desktop_apps()
+    return _app_cache
 
 
 class ActionStepEditor(QWidget):
@@ -80,6 +91,15 @@ class ActionStepEditor(QWidget):
             if p.kind == "page":
                 params[p.key] = widget.currentIndex() + 1  # 1-basiert
                 continue
+            if p.kind == "app":
+                text = widget.currentText().strip()
+                idx = widget.currentIndex()
+                if idx < 0 or widget.itemText(idx) != text:
+                    # frei eingetippt — bei Namensgleichheit erste App nehmen
+                    idx = widget.findText(text)
+                data = widget.itemData(idx) if idx >= 0 else None
+                params[p.key] = data or text  # App-Name → Befehl, sonst Roh-Befehl
+                continue
             value = widget.text().strip()
             if p.kind == "int":
                 try:
@@ -122,12 +142,41 @@ class ActionStepEditor(QWidget):
                 self._params_form.addRow(p.label + ":", combo)
                 self._param_edits[p.key] = combo
                 continue
+            if p.kind == "app":
+                combo = self._make_app_combo(str(values.get(p.key, "")), p.placeholder)
+                self._params_form.addRow(p.label + ":", combo)
+                self._param_edits[p.key] = combo
+                continue
             edit = QLineEdit()
             edit.setPlaceholderText(p.placeholder)
             edit.setText(str(values.get(p.key, "")))
             edit.editingFinished.connect(self.changed.emit)
             self._params_form.addRow(p.label + ":", edit)
             self._param_edits[p.key] = edit
+
+    def _make_app_combo(self, value: str, placeholder: str) -> QComboBox:
+        """Editierbare App-Auswahl mit Type-Ahead über alle .desktop-Apps."""
+        combo = QComboBox()
+        combo.setEditable(True)
+        combo.setInsertPolicy(QComboBox.NoInsert)
+        combo.addItem("", "")
+        for name, cmd in installed_apps():
+            combo.addItem(name, cmd)
+        completer = QCompleter(combo.model(), combo)
+        completer.setCompletionColumn(combo.modelColumn())
+        completer.setCaseSensitivity(Qt.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchContains)
+        combo.setCompleter(completer)
+        combo.lineEdit().setPlaceholderText(placeholder)
+        # Gespeichert wird der Befehl — passende App anzeigen, sonst Roh-Text
+        idx = combo.findData(value) if value else 0
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        else:
+            combo.setEditText(value)
+        combo.activated.connect(lambda *_: self.changed.emit())
+        combo.lineEdit().editingFinished.connect(self.changed.emit)
+        return combo
 
 
 class TriggerEditor(QWidget):
@@ -369,6 +418,13 @@ class KeyConfigPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
+        # Kopfbereich: links Titel + Beschriftung, rechts die Tastengrafik —
+        # so ist alles Wichtige ohne Scrollen direkt beieinander.
+        top = QHBoxLayout()
+        top.setSpacing(12)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(8)
         head = QHBoxLayout()
         self._title = QLabel("Taste wählen oder Funktion hineinziehen")
         self._title.setStyleSheet(f"font-weight:bold;font-size:14px;color:{style.TEXT};")
@@ -380,7 +436,7 @@ class KeyConfigPanel(QWidget):
             f"border-radius:6px;padding:3px 10px;}}")
         self._clear_btn.clicked.connect(self._clear_key)
         head.addWidget(self._clear_btn)
-        layout.addLayout(head)
+        left_col.addLayout(head)
 
         form = QFormLayout()
         form.setSpacing(4)
@@ -388,7 +444,35 @@ class KeyConfigPanel(QWidget):
         self._label_edit.setPlaceholderText("Text auf der Taste")
         self._label_edit.editingFinished.connect(self._on_change)
         form.addRow("Beschriftung:", self._label_edit)
-        layout.addLayout(form)
+        left_col.addLayout(form)
+        left_col.addStretch()
+        top.addLayout(left_col, stretch=1)
+
+        icons = QGroupBox("Tastengrafik")
+        icon_grid = QFormLayout(icons)
+        icon_grid.setSpacing(4)
+        self._icon_rows: dict[str, QLabel] = {}
+        for which, label in (("icon", "Normal"), ("icon_active", "Aktiv")):
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            preview = QLabel()
+            preview.setFixedSize(32, 32)
+            preview.setStyleSheet(f"background:{style.SURFACE};border-radius:6px;")
+            preview.setAlignment(Qt.AlignCenter)
+            row.addWidget(preview)
+            pick = QPushButton("Wählen…")
+            pick.clicked.connect(lambda _, w=which: self._pick_icon(w))
+            row.addWidget(pick)
+            clear = QPushButton("✕")
+            clear.setFixedSize(24, 24)
+            clear.setStyleSheet(_SMALL)
+            clear.setToolTip("Grafik entfernen")
+            clear.clicked.connect(lambda _, w=which: self._set_icon(w, ""))
+            row.addWidget(clear)
+            icon_grid.addRow(f"{label}:", row)
+            self._icon_rows[which] = preview
+        top.addWidget(icons)
+        layout.addLayout(top)
 
         self._tabs = QTabWidget()
         self._editors: dict[str, TriggerEditor] = {}
@@ -398,29 +482,6 @@ class KeyConfigPanel(QWidget):
             self._editors[trigger] = editor
             self._tabs.addTab(editor, title)
         layout.addWidget(self._tabs, stretch=1)
-
-        icons = QGroupBox("Tastengrafik")
-        icon_row = QHBoxLayout(icons)
-        icon_row.setSpacing(10)
-        self._icon_rows: dict[str, QLabel] = {}
-        for which, label in (("icon", "Normal"), ("icon_active", "Aktiv")):
-            icon_row.addWidget(QLabel(f"{label}:"))
-            preview = QLabel()
-            preview.setFixedSize(40, 40)
-            preview.setStyleSheet(f"background:{style.SURFACE};border-radius:6px;")
-            preview.setAlignment(Qt.AlignCenter)
-            icon_row.addWidget(preview)
-            pick = QPushButton("Wählen…")
-            pick.clicked.connect(lambda _, w=which: self._pick_icon(w))
-            icon_row.addWidget(pick)
-            clear = QPushButton("✕")
-            clear.setFixedSize(24, 24)
-            clear.setStyleSheet(_SMALL)
-            clear.clicked.connect(lambda _, w=which: self._set_icon(w, ""))
-            icon_row.addWidget(clear)
-            self._icon_rows[which] = preview
-        icon_row.addStretch()
-        layout.addWidget(icons)
 
         self.setEnabled(False)
 
@@ -450,6 +511,10 @@ class KeyConfigPanel(QWidget):
             self._update_preview(which, "")
         self.setEnabled(False)
         self._loading = False
+
+    def current_trigger(self) -> str:
+        """Trigger des aktuell gewählten Tabs (single/double/hold)."""
+        return TRIGGERS[self._tabs.currentIndex()][0]
 
     def current_key_cfg(self) -> dict:
         kc = {}
@@ -489,7 +554,7 @@ class KeyConfigPanel(QWidget):
 
     def _update_preview(self, which: str, ref: str):
         preview = self._icon_rows[which]
-        px = icon_pixmap(ref, 36) if ref else None
+        px = icon_pixmap(ref, 28) if ref else None
         preview.setPixmap(px or QPixmap())
 
     def _clear_key(self):

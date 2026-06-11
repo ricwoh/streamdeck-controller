@@ -103,8 +103,12 @@ class DeckDaemon:
         else:
             self._flash(key)
 
+        delay = self.cfg.get("timing", {}).get("chain_delay_ms", 0) / 1000.0
+
         def run_chain():
-            for a in actions:
+            for i, a in enumerate(actions):
+                if i and delay > 0:
+                    time.sleep(delay)
                 self.executor.execute(a)
 
         threading.Thread(target=run_chain, daemon=True,

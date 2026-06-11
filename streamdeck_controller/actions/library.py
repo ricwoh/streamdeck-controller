@@ -12,7 +12,7 @@ class ParamSpec:
     key: str
     label: str
     placeholder: str = ""
-    kind: str = "text"  # text | int
+    kind: str = "text"  # text | int | page | app
 
 
 @dataclass(frozen=True)
@@ -78,7 +78,8 @@ ACTION_LIBRARY: list[ActionSpec] = [
 
     # ── Apps & Web ────────────────────────────────────────────────────
     _spec("app_launch", "App starten", "Apps & Web",
-          params=[ParamSpec("cmd", "Programm/Befehl", "z.B. firefox")]),
+          "Installierte App wählen oder eigenen Befehl eintippen",
+          params=[ParamSpec("cmd", "Programm", "App suchen oder Befehl…", kind="app")]),
     _spec("open_url", "URL öffnen", "Apps & Web",
           params=[ParamSpec("url", "URL", "https://…")]),
     _spec("open_folder", "Ordner öffnen", "Apps & Web",

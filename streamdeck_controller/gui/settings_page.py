@@ -97,6 +97,14 @@ class SettingsPage(QWidget):
         self._hold_spin.setToolTip("Ab dieser Haltedauer zählt der Druck als „Halten“")
         self._hold_spin.editingFinished.connect(self._save_general)
         t_form.addRow("Halte-Dauer:", self._hold_spin)
+
+        self._chain_spin = QSpinBox()
+        self._chain_spin.setRange(0, 5000)
+        self._chain_spin.setSingleStep(50)
+        self._chain_spin.setSuffix(" ms")
+        self._chain_spin.setToolTip("Pause zwischen den Aktionen einer Kette")
+        self._chain_spin.editingFinished.connect(self._save_general)
+        t_form.addRow("Ketten-Verzögerung:", self._chain_spin)
         layout.addWidget(timing)
 
         # ── Spotify ──────────────────────────────────────────────────
@@ -156,6 +164,7 @@ class SettingsPage(QWidget):
         timing = self.cfg.get("timing", {})
         self._double_spin.setValue(timing.get("double_window_ms", 300))
         self._hold_spin.setValue(timing.get("hold_ms", 500))
+        self._chain_spin.setValue(timing.get("chain_delay_ms", 0))
         self._client_id.setText(self.cfg.get("spotify", {}).get("client_id", ""))
         self._refresh_spotify_status()
         self._loading = False
@@ -166,6 +175,7 @@ class SettingsPage(QWidget):
         self.cfg.setdefault("ui", {})["language"] = self._lang_combo.currentData()
         self.cfg.setdefault("timing", {})["double_window_ms"] = self._double_spin.value()
         self.cfg["timing"]["hold_ms"] = self._hold_spin.value()
+        self.cfg["timing"]["chain_delay_ms"] = self._chain_spin.value()
         save_config(self.cfg)
         ipc_request({"cmd": "reload"}, timeout=1.0)
 
